@@ -4,6 +4,14 @@ import "./App.css";
 type Message = {
   role: "user" | "assistant";
   content: string;
+  route?: string;
+  source?: string;
+};
+
+type ChatResponse = {
+  answer: string;
+  route: string;
+  source: string;
 };
 
 export default function App() {
@@ -11,9 +19,9 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastMessage, setLastMessage] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
@@ -21,86 +29,66 @@ export default function App() {
     });
   }, [messages, isLoading, error]);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, []);
+  const sendMessage = async (text?: string) => {
+    const userText = (text ?? message).trim();
 
-  const sendMessage = () => {
-    if (!message.trim() || isLoading) {
+    if (!userText || isLoading) {
       return;
     }
 
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
     setError(null);
-
-    const userText = message.trim();
+    setLastMessage(userText);
     setMessage("");
-
-    const userMessage: Message = {
-      role: "user",
-      content: userText,
-    };
-
-    const assistantMessage: Message = {
-      role: "assistant",
-      content: "",
-    };
-
-    const newMessages = [...messages, userMessage, assistantMessage];
-
-    setMessages(newMessages);
     setIsLoading(true);
 
-    const botReply =
-      "Hello! This is a simulated response. The real API and streaming will be connected when the backend endpoint is available.";
+    setMessages((currentMessages) => [
+      ...currentMessages,
+      {
+        role: "user",
+        content: userText,
+      },
+    ]);
 
-    let currentText = "";
-    let i = 0;
+    try {
+      const response = await fetch("http://127.0.0.1:8000/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: userText,
+        }),
+      });
 
-    timerRef.current = setInterval(() => {
-      if (i < botReply.length) {
-        currentText += botReply[i];
-        i++;
-
-        setMessages((currentMessages) => {
-          const updatedMessages = [...currentMessages];
-
-          updatedMessages[updatedMessages.length - 1] = {
-            role: "assistant",
-            content: currentText,
-          };
-
-          return updatedMessages;
-        });
-      } else {
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
-
-        setIsLoading(false);
+      if (!response.ok) {
+        throw new Error("Backend request failed");
       }
-    }, 25);
+
+      const data: ChatResponse = await response.json();
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        {
+          role: "assistant",
+          content: data.answer,
+          route: data.route,
+          source: data.source,
+        },
+      ]);
+    } catch {
+      setError(
+        "Could not connect to the backend. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const clearChat = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
     setMessages([]);
     setError(null);
     setMessage("");
-    setIsLoading(false);
+    setLastMessage("");
   };
 
   return (
@@ -115,7 +103,7 @@ export default function App() {
           <button
             className="clear-btn"
             onClick={clearChat}
-            disabled={isLoading}
+            disabled={isLoading || messages.length === 0}
           >
             Clear
           </button>
@@ -128,7 +116,9 @@ export default function App() {
 
               <h2>Welcome to Smart Assistant</h2>
 
-              <p>Start a conversation by sending a message.</p>
+              <p>
+                Start a conversation by sending a message.
+              </p>
             </div>
           ) : (
             messages.map((msg, idx) => (
@@ -140,20 +130,35 @@ export default function App() {
                     : "assistant-message"
                 }`}
               >
-                {msg.content}
+                <div>{msg.content}</div>
+
+                {msg.role === "assistant" &&
+                  msg.source && (
+                    <div className="response-meta">
+                      <span>Source: {msg.source}</span>
+                      <span>Route: {msg.route}</span>
+                    </div>
+                  )}
               </div>
             ))
           )}
 
           {isLoading && (
             <div className="message assistant-message loading-indicator">
-              Typing...
+              Thinking...
             </div>
           )}
 
           {error && (
             <div className="error-banner">
-              {error}
+              <span>{error}</span>
+
+              <button
+                onClick={() => sendMessage(lastMessage)}
+                disabled={isLoading || !lastMessage}
+              >
+                Retry
+              </button>
             </div>
           )}
 
@@ -176,10 +181,10 @@ export default function App() {
 
           <button
             className="send-btn"
-            onClick={sendMessage}
+            onClick={() => sendMessage()}
             disabled={isLoading || !message.trim()}
           >
-            Send
+            {isLoading ? "..." : "Send"}
           </button>
         </div>
       </div>
