@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 *.env
 backend/.env*.tsbuildinfo
+__pycache__/
+backend/chroma_db

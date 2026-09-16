@@ -1,0 +1,98 @@
+Company Employee Overview
+
+The company has employees working across different departments.
+The main departments covered in this document are IT, HR, and Finance.
+
+
+EMPLOYEE: AHMAD
+
+Department: IT
+Position: Developer
+Salary: 800
+
+Ahmad works as a Developer in the IT department.
+His responsibilities include participating in software development tasks,
+working with technical requirements, and contributing to application development.
+
+Skills:
+- Software development
+- Programming
+- Problem solving
+
+Department Context:
+The IT department works on software development, backend systems,
+technical support, and maintaining company technology.
+
+
+EMPLOYEE: SARA
+
+Department: HR
+Position: HR Specialist
+Salary: 700
+
+Sara works as an HR Specialist in the HR department.
+Her work is related to employee management, recruitment,
+and human resources activities.
+
+Skills:
+- Employee management
+- Recruitment
+- Communication
+
+Department Context:
+The HR department focuses on employee-related activities,
+recruitment, and human resources management.
+
+
+EMPLOYEE: OMAR
+
+Department: IT
+Position: Backend Developer
+Salary: 900
+
+Omar works as a Backend Developer in the IT department.
+His work focuses on backend development and server-side systems.
+
+Skills:
+- Backend development
+- Server-side programming
+- Database-related tasks
+
+Department Context:
+The IT department focuses on technology and software systems.
+
+
+EMPLOYEE: LINA
+
+Department: Finance
+Position: Accountant
+Salary: 750
+
+Lina works as an Accountant in the Finance department.
+Her work is related to accounting and financial activities.
+
+Skills:
+- Accounting
+- Financial tasks
+- Financial data management
+
+Department Context:
+The Finance department focuses on accounting
+and the company's financial activities.
+
+
+DEPARTMENT SUMMARY
+
+IT:
+The IT department focuses on software and technology.
+Ahmad and Omar are members of this department.
+
+HR:
+The HR department focuses on employees, recruitment,
+and human resources.
+Sara is a member of this department.
+
+Finance:
+The Finance department focuses on accounting
+and financial activities.
+Lina is a member of this department.

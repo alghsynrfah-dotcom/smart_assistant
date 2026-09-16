@@ -57,6 +57,7 @@ export default function App() {
         },
         body: JSON.stringify({
           question: userText,
+          conversation_history:messages,
         }),
       });
 

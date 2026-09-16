@@ -1,17 +1,29 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg
 from backend.router import route_question
+from backend.rag_service import generate_rag_answer
 from pydantic import BaseModel
+from typing import List
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+
+
 app = FastAPI()
 
-app.add_middleware(CORSMiddleware,allow_origins=["http://localhost:5173"],allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
 
 load_dotenv("backend/.env")
+
 
 client = OpenAI(
     base_url=os.getenv("VLLM_API_URL"),
@@ -21,8 +33,14 @@ client = OpenAI(
 MODEL_NAME = os.getenv("MODEL_NAME")
 
 
+class Message(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     question: str
+    conversation_history: List[Message] = []
 
 
 class ChatResponse(BaseModel):
@@ -67,7 +85,8 @@ def test_route(question: str):
         "question": question,
         "route": route
     }
-    
+
+
 def get_employee_data():
     conn = get_db_connection()
 
@@ -81,10 +100,54 @@ def get_employee_data():
 
     return rows
 
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
-    route = route_question(request.question)
 
+    route = route_question(
+    request.question,
+    [
+        {
+            "role": message.role,
+            "content": message.content
+        }
+        for message in request.conversation_history
+    ]
+)
+
+
+    # RAG
+    if route == "rag":
+        try:
+            history = [
+                {
+                    "role": message.role,
+                    "content": message.content
+                }
+                for message in request.conversation_history
+            ]
+
+            answer = generate_rag_answer(
+                request.question,
+                history
+            )
+
+            return {
+                "answer": answer,
+                "route": "rag",
+                "source": "employees.txt"
+            }
+
+        except Exception as e:
+            print("RAG ERROR:", e)
+
+            return {
+                "answer": "The RAG service is currently unavailable.",
+                "route": "rag",
+                "source": "employees.txt"
+            }
+
+    # Database
     if route == "db_direct":
         try:
             employees = get_employee_data()
@@ -115,6 +178,7 @@ def chat(request: ChatRequest):
                 "source": "PostgreSQL"
             }
 
+    # LLM
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
@@ -135,7 +199,8 @@ def chat(request: ChatRequest):
         }
 
     except Exception as e:
-        print("LLM ERROR:",e)
+        print("LLM ERROR:", e)
+
         return {
             "answer": "The LLM service is currently unavailable. Please try again later.",
             "route": "llm",
