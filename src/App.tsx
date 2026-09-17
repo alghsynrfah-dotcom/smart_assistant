@@ -15,6 +15,7 @@ type ChatResponse = {
 };
 
 export default function App() {
+    const [darkMode, setDarkMode] = useState(false);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,7 +30,7 @@ export default function App() {
     });
   }, [messages, isLoading, error]);
 
-  const sendMessage = async (text?: string) => {
+    const sendMessage = async (text?: string) => {
     const userText = (text ?? message).trim();
 
     if (!userText || isLoading) {
@@ -40,8 +41,6 @@ export default function App() {
     setLastMessage(userText);
     setMessage("");
     setIsLoading(true);
-
-    const currentHistory = [...messages];
 
     setMessages((currentMessages) => [
       ...currentMessages,
@@ -59,7 +58,6 @@ export default function App() {
         },
         body: JSON.stringify({
           question: userText,
-          conversation_history: currentHistory,
         }),
       });
 
@@ -67,40 +65,31 @@ export default function App() {
         throw new Error("Backend request failed");
       }
 
-      const contentType = response.headers.get("content-type") || "";
+      const route = response.headers.get("X-Route");
+      const source = response.headers.get("X-Source");
 
-      // =========================
-      // STREAMING RESPONSE
-      // =========================
-      if (contentType.includes("text/plain")) {
+      if (route === "rag") {
         if (!response.body) {
-          throw new Error("Streaming body is not available");
+          throw new Error("Streaming response is not available");
         }
-
-        const route =
-          response.headers.get("X-Route") || "rag";
-
-        const source =
-          response.headers.get("X-Source") || "employees.txt";
-
-        // Add empty assistant message first
-        setMessages((currentMessages) => [
-          ...currentMessages,
-          {
-            role: "assistant",
-            content: "",
-            route,
-            source,
-          },
-        ]);
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
         let assistantAnswer = "";
 
+        setMessages((currentMessages) => [
+          ...currentMessages,
+          {
+            role: "assistant",
+            content: "",
+            route: "rag",
+            source: source || "employees.txt",
+          },
+        ]);
+
         while (true) {
-          const { done, value } = await reader.read();
+          const { value, done } = await reader.read();
 
           if (done) {
             break;
@@ -114,31 +103,6 @@ export default function App() {
 
           setMessages((currentMessages) => {
             const updatedMessages = [...currentMessages];
-
-            const lastIndex = updatedMessages.length - 1;
-
-            if (
-              lastIndex >= 0 &&
-              updatedMessages[lastIndex].role === "assistant"
-            ) {
-              updatedMessages[lastIndex] = {
-                ...updatedMessages[lastIndex],
-                content: assistantAnswer,
-              };
-            }
-
-            return updatedMessages;
-          });
-        }
-
-        const finalChunk = decoder.decode();
-
-        if (finalChunk) {
-          assistantAnswer += finalChunk;
-
-          setMessages((currentMessages) => {
-            const updatedMessages = [...currentMessages];
-
             const lastIndex = updatedMessages.length - 1;
 
             if (
@@ -158,9 +122,6 @@ export default function App() {
         return;
       }
 
-      // =========================
-      // NORMAL JSON RESPONSE
-      // =========================
       const data: ChatResponse = await response.json();
 
       setMessages((currentMessages) => [
@@ -172,7 +133,6 @@ export default function App() {
           source: data.source,
         },
       ]);
-
     } catch (error) {
       console.error("CHAT ERROR:", error);
 
@@ -190,12 +150,32 @@ export default function App() {
     setMessage("");
     setLastMessage("");
   };
+    const copyMessage = async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch {
+      setError("Could not copy the message.");
+    }
+  };
+
+  const regenerateAnswer = async () => {
+    if (!lastMessage || isLoading) {
+      return;
+    }
+
+    await sendMessage(lastMessage);
+  };
 
   return (
-    <div className="app">
+    <div className={`app ${darkMode ? "dark-mode" : ""}`}>
       <div className="chat-container">
-
         <header className="chat-header">
+          <button
+  className="theme-btn"
+  onClick={() => setDarkMode(!darkMode)}
+>
+  {darkMode ? "☀️" : "🌙"}
+</button>
           <div>
             <h1>Smart Assistant</h1>
             <p>How can I help you today?</p>
@@ -211,7 +191,6 @@ export default function App() {
         </header>
 
         <main className="chat-messages">
-
           {messages.length === 0 && !error ? (
             <div className="empty-state">
               <div className="empty-icon">✨</div>
@@ -232,20 +211,37 @@ export default function App() {
                     : "assistant-message"
                 }`}
               >
-                <div>{msg.content}</div>
+                               <div>{msg.content}</div>
 
-                {msg.role === "assistant" &&
-                  msg.source && (
-                    <div className="response-meta">
-                      <span>
-                        Source: {msg.source}
-                      </span>
+                {msg.role === "assistant" && (
+                  <>
+                    <div className="message-actions">
+                      <button
+                        className="action-btn"
+                        onClick={() => copyMessage(msg.content)}
+                      >
+                        📋 Copy
+                      </button>
 
-                      <span>
-                        Route: {msg.route}
-                      </span>
+                      {idx === messages.length - 1 && (
+                        <button
+                          className="action-btn"
+                          onClick={regenerateAnswer}
+                          disabled={isLoading}
+                        >
+                          🔄 Regenerate
+                        </button>
+                      )}
                     </div>
-                  )}
+
+                    {msg.source && (
+                      <div className="response-meta">
+                        <span>Source: {msg.source}</span>
+                        <span>Route: {msg.route}</span>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             ))
           )}
@@ -273,7 +269,6 @@ export default function App() {
         </main>
 
         <div className="chat-input-area">
-
           <input
             type="text"
             placeholder="Type your message..."
@@ -294,9 +289,7 @@ export default function App() {
           >
             {isLoading ? "..." : "Send"}
           </button>
-
         </div>
-
       </div>
     </div>
   );
