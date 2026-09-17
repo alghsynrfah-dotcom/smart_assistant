@@ -63,7 +63,23 @@ def route_question(question: str, conversation_history=None) -> str:
     for phrase in rag_phrases:
         if phrase in question:
             return "rag"
+    # Questions related to the company/document
+    document_context_phrases = [
+        "company",
+        "office",
+        "opening date",
+        "working hours",
+        "employees",
+        "employee information",
+        "department information",
+        "contact information",
+        "company information",
+        "office information",
+    ]
 
+    for phrase in document_context_phrases:
+        if phrase in question:
+            return "rag"
     # Direct database questions
     db_keywords = [
         "employee",

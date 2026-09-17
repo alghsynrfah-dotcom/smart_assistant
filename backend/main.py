@@ -1,8 +1,9 @@
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg
 from backend.router import route_question
-from backend.rag_service import generate_rag_answer
+from backend.rag_service import (generate_rag_answer,generate_rag_answer_stream)
 from pydantic import BaseModel
 from typing import List
 import os
@@ -18,7 +19,8 @@ app.add_middleware(
     allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
+    expose_headers=["X-Route", "X-Source"]
 )
 
 
@@ -101,53 +103,57 @@ def get_employee_data():
     return rows
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat")
 def chat(request: ChatRequest):
 
     route = route_question(
-    request.question,
-    [
-        {
-            "role": message.role,
-            "content": message.content
-        }
-        for message in request.conversation_history
-    ]
-)
+        request.question,
+        [
+            {
+                "role": message.role,
+                "content": message.content
+            }
+            for message in request.conversation_history
+        ]
+    )
 
-
+    # =========================
     # RAG
+    # =========================
     if route == "rag":
-        try:
-            history = [
-                {
-                    "role": message.role,
-                    "content": message.content
-                }
-                for message in request.conversation_history
-            ]
 
-            answer = generate_rag_answer(
-                request.question,
-                history
-            )
-
-            return {
-                "answer": answer,
-                "route": "rag",
-                "source": "employees.txt"
+        history = [
+            {
+                "role": message.role,
+                "content": message.content
             }
+            for message in request.conversation_history
+        ]
 
-        except Exception as e:
-            print("RAG ERROR:", e)
+        def rag_generator():
+            try:
+                for text in generate_rag_answer_stream(
+                    request.question,
+                    history
+                ):
+                    yield text
 
-            return {
-                "answer": "The RAG service is currently unavailable.",
-                "route": "rag",
-                "source": "employees.txt"
+            except Exception as e:
+                print("RAG STREAM ERROR:", e)
+                yield "\n\nThe RAG service is currently unavailable."
+
+        return StreamingResponse(
+            rag_generator(),
+            media_type="text/plain",
+            headers={
+                "X-Route": "rag",
+                "X-Source": "employees.txt"
             }
+        )
 
+    # =========================
     # Database
+    # =========================
     if route == "db_direct":
         try:
             employees = get_employee_data()
@@ -171,14 +177,18 @@ def chat(request: ChatRequest):
                 "source": "PostgreSQL"
             }
 
-        except Exception:
+        except Exception as e:
+            print("DATABASE ERROR:", e)
+
             return {
                 "answer": "Could not retrieve employee data from PostgreSQL.",
                 "route": route,
                 "source": "PostgreSQL"
             }
 
+    # =========================
     # LLM
+    # =========================
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,

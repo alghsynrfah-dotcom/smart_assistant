@@ -41,6 +41,8 @@ export default function App() {
     setMessage("");
     setIsLoading(true);
 
+    const currentHistory = [...messages];
+
     setMessages((currentMessages) => [
       ...currentMessages,
       {
@@ -57,7 +59,7 @@ export default function App() {
         },
         body: JSON.stringify({
           question: userText,
-          conversation_history:messages,
+          conversation_history: currentHistory,
         }),
       });
 
@@ -65,6 +67,100 @@ export default function App() {
         throw new Error("Backend request failed");
       }
 
+      const contentType = response.headers.get("content-type") || "";
+
+      // =========================
+      // STREAMING RESPONSE
+      // =========================
+      if (contentType.includes("text/plain")) {
+        if (!response.body) {
+          throw new Error("Streaming body is not available");
+        }
+
+        const route =
+          response.headers.get("X-Route") || "rag";
+
+        const source =
+          response.headers.get("X-Source") || "employees.txt";
+
+        // Add empty assistant message first
+        setMessages((currentMessages) => [
+          ...currentMessages,
+          {
+            role: "assistant",
+            content: "",
+            route,
+            source,
+          },
+        ]);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        let assistantAnswer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          const chunk = decoder.decode(value, {
+            stream: true,
+          });
+
+          assistantAnswer += chunk;
+
+          setMessages((currentMessages) => {
+            const updatedMessages = [...currentMessages];
+
+            const lastIndex = updatedMessages.length - 1;
+
+            if (
+              lastIndex >= 0 &&
+              updatedMessages[lastIndex].role === "assistant"
+            ) {
+              updatedMessages[lastIndex] = {
+                ...updatedMessages[lastIndex],
+                content: assistantAnswer,
+              };
+            }
+
+            return updatedMessages;
+          });
+        }
+
+        const finalChunk = decoder.decode();
+
+        if (finalChunk) {
+          assistantAnswer += finalChunk;
+
+          setMessages((currentMessages) => {
+            const updatedMessages = [...currentMessages];
+
+            const lastIndex = updatedMessages.length - 1;
+
+            if (
+              lastIndex >= 0 &&
+              updatedMessages[lastIndex].role === "assistant"
+            ) {
+              updatedMessages[lastIndex] = {
+                ...updatedMessages[lastIndex],
+                content: assistantAnswer,
+              };
+            }
+
+            return updatedMessages;
+          });
+        }
+
+        return;
+      }
+
+      // =========================
+      // NORMAL JSON RESPONSE
+      // =========================
       const data: ChatResponse = await response.json();
 
       setMessages((currentMessages) => [
@@ -76,7 +172,10 @@ export default function App() {
           source: data.source,
         },
       ]);
-    } catch {
+
+    } catch (error) {
+      console.error("CHAT ERROR:", error);
+
       setError(
         "Could not connect to the backend. Please try again."
       );
@@ -95,6 +194,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="chat-container">
+
         <header className="chat-header">
           <div>
             <h1>Smart Assistant</h1>
@@ -111,6 +211,7 @@ export default function App() {
         </header>
 
         <main className="chat-messages">
+
           {messages.length === 0 && !error ? (
             <div className="empty-state">
               <div className="empty-icon">✨</div>
@@ -136,8 +237,13 @@ export default function App() {
                 {msg.role === "assistant" &&
                   msg.source && (
                     <div className="response-meta">
-                      <span>Source: {msg.source}</span>
-                      <span>Route: {msg.route}</span>
+                      <span>
+                        Source: {msg.source}
+                      </span>
+
+                      <span>
+                        Route: {msg.route}
+                      </span>
                     </div>
                   )}
               </div>
@@ -167,6 +273,7 @@ export default function App() {
         </main>
 
         <div className="chat-input-area">
+
           <input
             type="text"
             placeholder="Type your message..."
@@ -187,7 +294,9 @@ export default function App() {
           >
             {isLoading ? "..." : "Send"}
           </button>
+
         </div>
+
       </div>
     </div>
   );
