@@ -57,8 +57,12 @@ export default function App() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          question: userText,
-        }),
+  question: userText,
+  conversation_history: messages.map((msg) => ({
+    role: msg.role,
+    content: msg.content,
+  })),
+}),
       });
 
       if (!response.ok) {
