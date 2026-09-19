@@ -23,14 +23,25 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState("");
   const [copiedMessage, setCopiedMessage] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
   }, [messages, isLoading, error]);
+
+  useEffect(() => {
+    document.body.style.backgroundColor = darkMode
+      ? "#111827"
+      : "#f7f7f8";
+
+    return () => {
+      document.body.style.backgroundColor = "";
+    };
+  }, [darkMode]);
 
   const sendMessage = async (text?: string) => {
     const userText = (text ?? message).trim();
@@ -125,6 +136,29 @@ export default function App() {
           });
         }
 
+        const finalChunk = decoder.decode();
+
+        if (finalChunk) {
+          assistantAnswer += finalChunk;
+
+          setMessages((currentMessages) => {
+            const updatedMessages = [...currentMessages];
+            const lastIndex = updatedMessages.length - 1;
+
+            if (
+              lastIndex >= 0 &&
+              updatedMessages[lastIndex].role === "assistant"
+            ) {
+              updatedMessages[lastIndex] = {
+                ...updatedMessages[lastIndex],
+                content: assistantAnswer,
+              };
+            }
+
+            return updatedMessages;
+          });
+        }
+
         return;
       }
 
@@ -158,6 +192,7 @@ export default function App() {
     setMessage("");
     setLastMessage("");
     setCopiedMessage(null);
+    setSearchQuery("");
   };
 
   const copyMessage = async (
@@ -186,11 +221,58 @@ export default function App() {
   };
 
   const readMessage = (content: string) => {
+    if (!content.trim()) {
+      return;
+    }
+
+    if (!("speechSynthesis" in window)) {
+      setError("Speech is not supported in this browser.");
+      return;
+    }
+
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(content);
+    const speak = () => {
+      const utterance = new SpeechSynthesisUtterance(content);
 
-    window.speechSynthesis.speak(utterance);
+      utterance.lang = "ar-SA";
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+
+      const voices = window.speechSynthesis.getVoices();
+
+      const arabicVoice =
+        voices.find((voice) =>
+          voice.lang.toLowerCase().startsWith("ar")
+        ) ||
+        voices.find((voice) =>
+          voice.name.toLowerCase().includes("arabic")
+        );
+
+      if (arabicVoice) {
+        utterance.voice = arabicVoice;
+      }
+
+      window.speechSynthesis.speak(utterance);
+    };
+
+    const voices = window.speechSynthesis.getVoices();
+
+    if (voices.length > 0) {
+      speak();
+    } else {
+      window.speechSynthesis.onvoiceschanged = () => {
+        speak();
+        window.speechSynthesis.onvoiceschanged = null;
+      };
+
+      setTimeout(() => {
+        if (!window.speechSynthesis.speaking) {
+          speak();
+        }
+      }, 300);
+    }
   };
 
   const handleFeedback = (
@@ -206,14 +288,26 @@ export default function App() {
     );
   };
 
-  return (
-    <div className={`app ${darkMode ? "dark-mode" : ""}`}>
-      <div className="chat-container">
+  const filteredMessages = messages
+    .map((msg, index) => ({
+      message: msg,
+      originalIndex: index,
+    }))
+    .filter(({ message: msg }) =>
+      msg.content
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase())
+    );
 
+  return (
+    <div className={darkMode ? "app dark-mode" : "app"}>
+      <div className="chat-container">
         <header className="chat-header">
           <button
             className="theme-btn"
-            onClick={() => setDarkMode(!darkMode)}
+            onClick={() =>
+              setDarkMode((current) => !current)
+            }
           >
             {darkMode ? "☀️" : "🌙"}
           </button>
@@ -232,8 +326,20 @@ export default function App() {
           </button>
         </header>
 
-        <main className="chat-messages">
+        {messages.length > 0 && (
+          <div className="search-area">
+            <input
+              type="text"
+              placeholder="Search in chat..."
+              value={searchQuery}
+              onChange={(e) =>
+                setSearchQuery(e.target.value)
+              }
+            />
+          </div>
+        )}
 
+        <main className="chat-messages">
           {messages.length === 0 && !error ? (
             <div className="empty-state">
               <div className="empty-icon">✨</div>
@@ -245,100 +351,109 @@ export default function App() {
               </p>
             </div>
           ) : (
-            messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`message ${
-                  msg.role === "user"
-                    ? "user-message"
-                    : "assistant-message"
-                }`}
-              >
+            filteredMessages.map(
+              ({ message: msg, originalIndex }) => (
+                <div
+                  key={originalIndex}
+                  className={`message ${
+                    msg.role === "user"
+                      ? "user-message"
+                      : "assistant-message"
+                  }`}
+                >
+                  <div>{msg.content}</div>
 
-                <div>{msg.content}</div>
+                  {msg.role === "assistant" && (
+                    <>
+                      <div className="message-actions">
+                        <button
+                          className={`action-btn ${
+                            copiedMessage === originalIndex
+                              ? "copied-btn"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            copyMessage(
+                              msg.content,
+                              originalIndex
+                            )
+                          }
+                        >
+                          {copiedMessage === originalIndex
+                            ? "✓ Copied"
+                            : "📋 Copy"}
+                        </button>
 
-                {msg.role === "assistant" && (
-                  <>
-                    <div className="message-actions">
-
-                      <button
-                        className={`action-btn ${
-                          copiedMessage === idx
-                            ? "copied-btn"
-                            : ""
-                        }`}
-                        onClick={() =>
-                          copyMessage(msg.content, idx)
-                        }
-                      >
-                        {copiedMessage === idx
-                          ? "✓ Copied"
-                          : "📋 Copy"}
-                      </button>
-
-                      <button
-                        className="action-btn"
-                        onClick={() =>
-                          readMessage(msg.content)
-                        }
-                        disabled={!msg.content}
-                      >
-                        🔊 Read
-                      </button>
-
-                      <button
-                        className={`action-btn ${
-                          msg.liked === "like"
-                            ? "active-feedback"
-                            : ""
-                        }`}
-                        onClick={() =>
-                          handleFeedback(idx, "like")
-                        }
-                      >
-                        👍
-                      </button>
-
-                      <button
-                        className={`action-btn ${
-                          msg.liked === "dislike"
-                            ? "active-feedback"
-                            : ""
-                        }`}
-                        onClick={() =>
-                          handleFeedback(idx, "dislike")
-                        }
-                      >
-                        👎
-                      </button>
-
-                      {idx === messages.length - 1 && (
                         <button
                           className="action-btn"
-                          onClick={regenerateAnswer}
-                          disabled={isLoading}
+                          onClick={() =>
+                            readMessage(msg.content)
+                          }
+                          disabled={!msg.content}
                         >
-                          🔄 Regenerate
+                          🔊 Read
                         </button>
-                      )}
 
-                    </div>
+                        <button
+                          className={`action-btn ${
+                            msg.liked === "like"
+                              ? "active-feedback"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            handleFeedback(
+                              originalIndex,
+                              "like"
+                            )
+                          }
+                        >
+                          👍
+                        </button>
 
-                    {msg.source && (
-                      <div className="response-meta">
-                        <span>
-                          Source: {msg.source}
-                        </span>
+                        <button
+                          className={`action-btn ${
+                            msg.liked === "dislike"
+                              ? "active-feedback"
+                              : ""
+                          }`}
+                          onClick={() =>
+                            handleFeedback(
+                              originalIndex,
+                              "dislike"
+                            )
+                          }
+                        >
+                          👎
+                        </button>
 
-                        <span>
-                          Route: {msg.route}
-                        </span>
+                        {originalIndex ===
+                          messages.length - 1 && (
+                          <button
+                            className="action-btn"
+                            onClick={regenerateAnswer}
+                            disabled={isLoading}
+                          >
+                            🔄 Regenerate
+                          </button>
+                        )}
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-            ))
+
+                      {msg.source && (
+                        <div className="response-meta">
+                          <span>
+                            Source: {msg.source}
+                          </span>
+
+                          <span>
+                            Route: {msg.route}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            )
           )}
 
           {isLoading && (
@@ -364,7 +479,6 @@ export default function App() {
         </main>
 
         <div className="chat-input-area">
-
           <input
             type="text"
             placeholder="Type your message..."
@@ -385,7 +499,6 @@ export default function App() {
           >
             {isLoading ? "..." : "Send"}
           </button>
-
         </div>
       </div>
     </div>

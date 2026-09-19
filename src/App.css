@@ -213,13 +213,87 @@ body {
   opacity: 0.9;
 }
 
+.theme-btn {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background-color: #f3f4f6;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.theme-btn:hover {
+  background-color: #e5e7eb;
+  transform: scale(1.05);
+}
+
+.message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.action-btn {
+  padding: 5px 9px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background-color: #f3f4f6;
+  color: #374151;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.action-btn:hover:not(:disabled) {
+  background-color: #e5e7eb;
+  transform: translateY(-1px);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.copied-btn {
+  background-color: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.active-feedback {
+  background-color: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.search-area {
+  padding: 10px 20px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.search-area input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-area input:focus {
+  border-color: #2563eb;
+}
+
 .app.dark-mode {
   background-color: #111827;
   color: #f9fafb;
 }
 
 .app.dark-mode .chat-container {
-  background: #1f2937;
+  background-color: #1f2937;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -248,9 +322,17 @@ body {
   color: #f9fafb;
 }
 
+.app.dark-mode .empty-state p {
+  color: #9ca3af;
+}
+
 .app.dark-mode .assistant-message {
   background-color: #374151;
   color: #f9fafb;
+}
+
+.app.dark-mode .loading-indicator {
+  color: #d1d5db;
 }
 
 .app.dark-mode .response-meta {
@@ -277,62 +359,20 @@ body {
   background-color: #374151;
 }
 
-.theme-btn {
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background-color: #f3f4f6;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: background-color 0.2s, transform 0.2s;
-}
-
-.theme-btn:hover {
-  background-color: #e5e7eb;
-  transform: scale(1.05);
-}
-
 .app.dark-mode .theme-btn {
   background-color: #374151;
   border-color: #4b5563;
   color: #f9fafb;
 }
 
-.app.dark-mode .theme-btn:hover {
+.app.dark-mode .clear-btn {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #f9fafb;
+}
+
+.app.dark-mode .clear-btn:hover {
   background-color: #4b5563;
-}
-
-.message-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.action-btn {
-  padding: 5px 9px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background-color: #f9fafb;
-  color: #374151;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: background-color 0.2s, transform 0.2s;
-}
-
-.action-btn:hover:not(:disabled) {
-  background-color: #e5e7eb;
-  transform: translateY(-1px);
-}
-
-.action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.active-feedback {
-  background-color: #dbeafe;
-  border-color: #2563eb;
 }
 
 .app.dark-mode .action-btn {
@@ -345,87 +385,29 @@ body {
   background-color: #4b5563;
 }
 
+.app.dark-mode .copied-btn {
+  background-color: #166534;
+  border-color: #22c55e;
+  color: #dcfce7;
+}
+
 .app.dark-mode .active-feedback {
-  background-color: #1d4ed8;
-  border-color: #60a5fa;
+  background-color: #1e40af;
+  border-color: #3b82f6;
 }
 
-.app.dark-mode .send-btn {
-  background-color: #2563eb;
+.app.dark-mode .search-area {
+  background-color: #1f2937;
+  border-bottom-color: #374151;
 }
 
-.app.dark-mode .clear-btn {
+.app.dark-mode .search-area input {
   background-color: #374151;
-  border-color: #4b5563;
   color: #f9fafb;
+  border-color: #4b5563;
 }
 
-.app.dark-mode .clear-btn:hover:not(:disabled) {
-  background-color: #4b5563;
+.app.dark-mode .search-area input::placeholder {
+  color: #9ca3af;
 }
 
-.app.dark-mode .error-banner {
-  background-color: #3f1d1d;
-  color: #fca5a5;
-}
-
-@media (max-width: 600px) {
-  .app {
-    align-items: stretch;
-  }
-
-  .chat-container {
-    width: 100%;
-    max-width: none;
-    height: 100vh;
-    border-radius: 0;
-  }
-
-  .chat-header {
-    padding: 16px;
-  }
-
-  .chat-messages {
-    padding: 16px;
-    gap: 12px;
-  }
-
-  .message {
-    max-width: 85%;
-  }
-
-  .chat-input-area {
-    padding: 12px;
-    gap: 8px;
-  }
-
-  .chat-input-area input {
-    min-width: 0;
-    padding: 10px 12px;
-  }
-
-  .send-btn {
-    padding: 0 14px;
-  }
-
-  .clear-btn {
-    padding: 6px 10px;
-  }
-
-  .theme-btn {
-    padding: 6px 9px;
-  }
-
-  .message-actions {
-    gap: 5px;
-  }
-
-  .action-btn {
-    padding: 5px 7px;
-    font-size: 0.75rem;
-  }
-}
-.copied-btn {
-  background: #22c55e;
-  color: white;
-}
