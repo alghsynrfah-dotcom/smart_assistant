@@ -6,6 +6,7 @@ type Message = {
   content: string;
   route?: string;
   source?: string;
+  liked?: "like" | "dislike";
 };
 
 type ChatResponse = {
@@ -15,12 +16,13 @@ type ChatResponse = {
 };
 
 export default function App() {
-    const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState("");
+  const [copiedMessage, setCopiedMessage] = useState<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -30,7 +32,7 @@ export default function App() {
     });
   }, [messages, isLoading, error]);
 
-    const sendMessage = async (text?: string) => {
+  const sendMessage = async (text?: string) => {
     const userText = (text ?? message).trim();
 
     if (!userText || isLoading) {
@@ -57,12 +59,12 @@ export default function App() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-  question: userText,
-  conversation_history: messages.map((msg) => ({
-    role: msg.role,
-    content: msg.content,
-  })),
-}),
+          question: userText,
+          conversation_history: messages.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+        }),
       });
 
       if (!response.ok) {
@@ -149,14 +151,27 @@ export default function App() {
   };
 
   const clearChat = () => {
+    window.speechSynthesis.cancel();
+
     setMessages([]);
     setError(null);
     setMessage("");
     setLastMessage("");
+    setCopiedMessage(null);
   };
-    const copyMessage = async (content: string) => {
+
+  const copyMessage = async (
+    content: string,
+    index: number
+  ) => {
     try {
       await navigator.clipboard.writeText(content);
+
+      setCopiedMessage(index);
+
+      setTimeout(() => {
+        setCopiedMessage(null);
+      }, 1500);
     } catch {
       setError("Could not copy the message.");
     }
@@ -170,16 +185,39 @@ export default function App() {
     await sendMessage(lastMessage);
   };
 
+  const readMessage = (content: string) => {
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(content);
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleFeedback = (
+    index: number,
+    feedback: "like" | "dislike"
+  ) => {
+    setMessages((currentMessages) =>
+      currentMessages.map((msg, i) =>
+        i === index
+          ? { ...msg, liked: feedback }
+          : msg
+      )
+    );
+  };
+
   return (
     <div className={`app ${darkMode ? "dark-mode" : ""}`}>
       <div className="chat-container">
+
         <header className="chat-header">
           <button
-  className="theme-btn"
-  onClick={() => setDarkMode(!darkMode)}
->
-  {darkMode ? "☀️" : "🌙"}
-</button>
+            className="theme-btn"
+            onClick={() => setDarkMode(!darkMode)}
+          >
+            {darkMode ? "☀️" : "🌙"}
+          </button>
+
           <div>
             <h1>Smart Assistant</h1>
             <p>How can I help you today?</p>
@@ -195,6 +233,7 @@ export default function App() {
         </header>
 
         <main className="chat-messages">
+
           {messages.length === 0 && !error ? (
             <div className="empty-state">
               <div className="empty-icon">✨</div>
@@ -215,16 +254,62 @@ export default function App() {
                     : "assistant-message"
                 }`}
               >
-                               <div>{msg.content}</div>
+
+                <div>{msg.content}</div>
 
                 {msg.role === "assistant" && (
                   <>
                     <div className="message-actions">
+
+                      <button
+                        className={`action-btn ${
+                          copiedMessage === idx
+                            ? "copied-btn"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          copyMessage(msg.content, idx)
+                        }
+                      >
+                        {copiedMessage === idx
+                          ? "✓ Copied"
+                          : "📋 Copy"}
+                      </button>
+
                       <button
                         className="action-btn"
-                        onClick={() => copyMessage(msg.content)}
+                        onClick={() =>
+                          readMessage(msg.content)
+                        }
+                        disabled={!msg.content}
                       >
-                        📋 Copy
+                        🔊 Read
+                      </button>
+
+                      <button
+                        className={`action-btn ${
+                          msg.liked === "like"
+                            ? "active-feedback"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          handleFeedback(idx, "like")
+                        }
+                      >
+                        👍
+                      </button>
+
+                      <button
+                        className={`action-btn ${
+                          msg.liked === "dislike"
+                            ? "active-feedback"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          handleFeedback(idx, "dislike")
+                        }
+                      >
+                        👎
                       </button>
 
                       {idx === messages.length - 1 && (
@@ -236,12 +321,18 @@ export default function App() {
                           🔄 Regenerate
                         </button>
                       )}
+
                     </div>
 
                     {msg.source && (
                       <div className="response-meta">
-                        <span>Source: {msg.source}</span>
-                        <span>Route: {msg.route}</span>
+                        <span>
+                          Source: {msg.source}
+                        </span>
+
+                        <span>
+                          Route: {msg.route}
+                        </span>
                       </div>
                     )}
                   </>
@@ -273,6 +364,7 @@ export default function App() {
         </main>
 
         <div className="chat-input-area">
+
           <input
             type="text"
             placeholder="Type your message..."
@@ -293,6 +385,7 @@ export default function App() {
           >
             {isLoading ? "..." : "Send"}
           </button>
+
         </div>
       </div>
     </div>

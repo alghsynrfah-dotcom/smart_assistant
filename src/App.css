@@ -1,4 +1,3 @@
-/* App.css */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -65,6 +64,11 @@ body {
   background-color: #e5e7eb;
 }
 
+.clear-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .chat-messages {
   flex: 1;
   padding: 20px;
@@ -123,6 +127,7 @@ body {
 .loading-indicator {
   font-style: italic;
   color: #4b5563;
+  opacity: 0.7;
 }
 
 .chat-input-area {
@@ -171,49 +176,7 @@ body {
   background-color: #93c5fd;
   cursor: not-allowed;
 }
-@media (max-width: 600px) {
-  .app {
-    align-items: stretch;
-  }
 
-  .chat-container {
-    width: 100%;
-    max-width: none;
-    height: 100vh;
-    border-radius: 0;
-  }
-
-  .chat-header {
-    padding: 16px;
-  }
-
-  .chat-messages {
-    padding: 16px;
-    gap: 12px;
-  }
-
-  .message {
-    max-width: 85%;
-  }
-
-  .chat-input-area {
-    padding: 12px;
-    gap: 8px;
-  }
-
-  .chat-input-area input {
-    min-width: 0;
-    padding: 10px 12px;
-  }
-
-  .send-btn {
-    padding: 0 14px;
-  }
-
-  .clear-btn {
-    padding: 6px 10px;
-  }
-}
 .response-meta {
   display: flex;
   gap: 12px;
@@ -249,14 +212,6 @@ body {
 .error-banner button:hover {
   opacity: 0.9;
 }
-
-.loading-indicator {
-  opacity: 0.7;
-  font-style: italic;
-}
-/* =========================
-   Dark Mode
-   ========================= */
 
 .app.dark-mode {
   background-color: #111827;
@@ -319,23 +274,8 @@ body {
 }
 
 .app.dark-mode .chat-input-area input:disabled {
-  background-color: #2d3748;
-}
-
-.app.dark-mode .clear-btn {
   background-color: #374151;
-  color: #f9fafb;
-  border-color: #4b5563;
 }
-
-.app.dark-mode .clear-btn:hover {
-  background-color: #4b5563;
-}
-
-
-/* =========================
-   Theme Button
-   ========================= */
 
 .theme-btn {
   padding: 8px 12px;
@@ -344,29 +284,28 @@ body {
   background-color: #f3f4f6;
   cursor: pointer;
   font-size: 1rem;
+  transition: background-color 0.2s, transform 0.2s;
 }
 
 .theme-btn:hover {
   background-color: #e5e7eb;
+  transform: scale(1.05);
 }
 
 .app.dark-mode .theme-btn {
   background-color: #374151;
   border-color: #4b5563;
+  color: #f9fafb;
 }
 
 .app.dark-mode .theme-btn:hover {
   background-color: #4b5563;
 }
 
-
-/* =========================
-   Message Actions
-   ========================= */
-
 .message-actions {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: 10px;
 }
 
@@ -374,14 +313,16 @@ body {
   padding: 5px 9px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  background-color: #ffffff;
+  background-color: #f9fafb;
   color: #374151;
-  font-size: 12px;
   cursor: pointer;
+  font-size: 0.8rem;
+  transition: background-color 0.2s, transform 0.2s;
 }
 
-.action-btn:hover {
-  background-color: #f3f4f6;
+.action-btn:hover:not(:disabled) {
+  background-color: #e5e7eb;
+  transform: translateY(-1px);
 }
 
 .action-btn:disabled {
@@ -389,12 +330,102 @@ body {
   cursor: not-allowed;
 }
 
-.app.dark-mode .action-btn {
-  background-color: #374151;
-  color: #f9fafb;
-  border-color: #4b5563;
+.active-feedback {
+  background-color: #dbeafe;
+  border-color: #2563eb;
 }
 
-.app.dark-mode .action-btn:hover {
+.app.dark-mode .action-btn {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #f9fafb;
+}
+
+.app.dark-mode .action-btn:hover:not(:disabled) {
   background-color: #4b5563;
+}
+
+.app.dark-mode .active-feedback {
+  background-color: #1d4ed8;
+  border-color: #60a5fa;
+}
+
+.app.dark-mode .send-btn {
+  background-color: #2563eb;
+}
+
+.app.dark-mode .clear-btn {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #f9fafb;
+}
+
+.app.dark-mode .clear-btn:hover:not(:disabled) {
+  background-color: #4b5563;
+}
+
+.app.dark-mode .error-banner {
+  background-color: #3f1d1d;
+  color: #fca5a5;
+}
+
+@media (max-width: 600px) {
+  .app {
+    align-items: stretch;
+  }
+
+  .chat-container {
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    border-radius: 0;
+  }
+
+  .chat-header {
+    padding: 16px;
+  }
+
+  .chat-messages {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .message {
+    max-width: 85%;
+  }
+
+  .chat-input-area {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .chat-input-area input {
+    min-width: 0;
+    padding: 10px 12px;
+  }
+
+  .send-btn {
+    padding: 0 14px;
+  }
+
+  .clear-btn {
+    padding: 6px 10px;
+  }
+
+  .theme-btn {
+    padding: 6px 9px;
+  }
+
+  .message-actions {
+    gap: 5px;
+  }
+
+  .action-btn {
+    padding: 5px 7px;
+    font-size: 0.75rem;
+  }
+}
+.copied-btn {
+  background: #22c55e;
+  color: white;
 }
