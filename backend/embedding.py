@@ -1,9 +1,13 @@
 import os
+
 print("EMBEDDING FILE IS RUNNING")
+
 from dotenv import load_dotenv
 from openai import OpenAI
 
+
 load_dotenv("backend/.env")
+
 
 client = OpenAI(
     base_url=os.getenv("EMBEDDING_API_URL"),
@@ -20,12 +24,15 @@ def create_embedding(text):
     )
 
     return response.data[0].embedding
+
+
 if __name__ == "__main__":
-    from backend.rag import load_document, chunk_document
+    from backend.rag import load_documents, chunk_document
 
-    document = load_document()
-    chunks = chunk_document(document)
+    documents = load_documents()
+    chunks = chunk_document(documents)
 
+    print("NUMBER OF DOCUMENTS:", len(documents))
     print("NUMBER OF CHUNKS:", len(chunks))
 
     for index, chunk in enumerate(chunks):

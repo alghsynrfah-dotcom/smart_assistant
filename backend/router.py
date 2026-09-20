@@ -45,20 +45,26 @@ def route_question(question: str, conversation_history=None) -> str:
 
     # Questions that clearly need the RAG document
     rag_phrases = [
-        "who works in it",
-        "phone number",
-        "phone",
-        "email",
-        "address",
-        "what does",
-        "what are their skills",
-        "what are their responsibilities",
-        "works as",
-        "software development",
-        "backend development",
-        "recruitment",
-        "accounting",
-    ]
+    "who works in it",
+    "phone number",
+    "phone",
+    "email",
+    "address",
+    "what does",
+    "what are their skills",
+    "what are their responsibilities",
+    "works as",
+    "software development",
+    "backend development",
+    "recruitment",
+    "accounting",
+    "department collaboration",
+    "how do departments collaborate",
+    "how departments collaborate",
+    "departments collaborate",
+    "department responsibilities",
+]
+    
 
     for phrase in rag_phrases:
         if phrase in question:

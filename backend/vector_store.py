@@ -1,6 +1,6 @@
 import chromadb
 
-from backend.rag import load_document, chunk_document
+from backend.rag import load_documents, chunk_documents_with_sources
 from backend.embedding import create_embedding
 
 
@@ -9,6 +9,7 @@ chroma_client = chromadb.PersistentClient(
     path="backend/chroma_db"
 )
 
+
 # Create or get collection
 collection = chroma_client.get_or_create_collection(
     name="employees"
@@ -16,16 +17,21 @@ collection = chroma_client.get_or_create_collection(
 
 
 def build_vector_store():
-    document = load_document()
-    chunks = chunk_document(document)
+    documents = load_documents()
+    chunks = chunk_documents_with_sources(documents)
 
     for index, chunk in enumerate(chunks):
-        vector = create_embedding(chunk)
+        vector = create_embedding(chunk["text"])
 
         collection.upsert(
             ids=[f"chunk_{index}"],
-            documents=[chunk],
-            embeddings=[vector]
+            documents=[chunk["text"]],
+            embeddings=[vector],
+            metadatas=[
+                {
+                    "source": chunk["source"]
+                }
+            ]
         )
 
     print("VECTOR STORE BUILT SUCCESSFULLY")

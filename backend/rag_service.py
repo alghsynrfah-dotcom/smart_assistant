@@ -1,3 +1,4 @@
+
 import os
 
 from dotenv import load_dotenv
@@ -37,32 +38,62 @@ Current question:
 """
 
 
-def generate_rag_answer(question, conversation_history=None):
+def retrieve_rag_documents(question, conversation_history=None):
     if conversation_history is None:
         conversation_history = []
 
-    # 1. Build a better retrieval question using conversation history
     retrieval_question = build_retrieval_question(
         question,
         conversation_history
     )
 
-    # 2. Retrieve relevant chunks
     documents = retrieve_documents(
         retrieval_question,
         top_k=3
     )
 
-    # 3. Combine retrieved chunks into context
-    context = "\n\n".join(documents)
+    return documents
 
-    # 4. Convert conversation history to text
+
+def get_rag_sources(question, conversation_history=None):
+    documents = retrieve_rag_documents(
+        question,
+        conversation_history
+    )
+
+    sources = list(
+        dict.fromkeys(
+            document["source"]
+            for document in documents
+        )
+    )
+
+    return sources
+
+
+def generate_rag_answer(question, conversation_history=None):
+    if conversation_history is None:
+        conversation_history = []
+
+    # 1. Retrieve relevant chunks
+    documents = retrieve_rag_documents(
+        question,
+        conversation_history
+    )
+
+    # 2. Combine retrieved chunks into context
+    context = "\n\n".join(
+        document["text"]
+        for document in documents
+    )
+
+    # 3. Convert conversation history to text
     history_text = "\n".join(
         f"{message['role']}: {message['content']}"
         for message in conversation_history
     )
 
-    # 5. Build prompt
+    # 4. Build prompt
     prompt = f"""
 Use the document context and the conversation history to answer the user's question.
 
@@ -78,7 +109,7 @@ Current User Question:
 If the answer is not available in the document context, say that the information is not available in the document.
 """
 
-    # 6. Send the prompt to the LLM
+    # 5. Send the prompt to the LLM
     response = client.chat.completions.create(
         model=MODEL_NAME,
         messages=[
@@ -89,7 +120,7 @@ If the answer is not available in the document context, say that the information
         ]
     )
 
-    # 7. Return the answer
+    # 6. Return the answer
     return response.choices[0].message.content
 
 
@@ -97,28 +128,25 @@ def generate_rag_answer_stream(question, conversation_history=None):
     if conversation_history is None:
         conversation_history = []
 
-    # 1. Build a better retrieval question using conversation history
-    retrieval_question = build_retrieval_question(
+    # 1. Retrieve relevant chunks
+    documents = retrieve_rag_documents(
         question,
         conversation_history
     )
 
-    # 2. Retrieve relevant chunks
-    documents = retrieve_documents(
-        retrieval_question,
-        top_k=3
+    # 2. Combine retrieved chunks into context
+    context = "\n\n".join(
+        document["text"]
+        for document in documents
     )
 
-    # 3. Combine retrieved chunks into context
-    context = "\n\n".join(documents)
-
-    # 4. Convert conversation history to text
+    # 3. Convert conversation history to text
     history_text = "\n".join(
         f"{message['role']}: {message['content']}"
         for message in conversation_history
     )
 
-    # 5. Build prompt
+    # 4. Build prompt
     prompt = f"""
 Use the document context and the conversation history to answer the user's question.
 
@@ -134,7 +162,7 @@ Current User Question:
 If the answer is not available in the document context, say that the information is not available in the document.
 """
 
-    # 6. Send the prompt to the LLM with streaming
+    # 5. Send the prompt to the LLM with streaming
     response = client.chat.completions.create(
         model=MODEL_NAME,
         messages=[
@@ -146,14 +174,14 @@ If the answer is not available in the document context, say that the information
         stream=True
     )
 
-    # 7. Return the answer gradually
+    # 6. Return the answer gradually
     for chunk in response:
         if chunk.choices and chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
 
 
 if __name__ == "__main__":
-    question = "Who works in the IT department?"
+    question = "How do departments collaborate?"
 
     print("STREAMING TEST:")
 

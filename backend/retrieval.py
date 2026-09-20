@@ -10,11 +10,22 @@ def retrieve_documents(question, top_k=3):
         n_results=top_k
     )
 
-    return results["documents"][0]
+    documents = results["documents"][0]
+    metadatas = results["metadatas"][0]
+
+    retrieved_documents = []
+
+    for document, metadata in zip(documents, metadatas):
+        retrieved_documents.append({
+            "text": document,
+            "source": metadata["source"]
+        })
+
+    return retrieved_documents
 
 
 if __name__ == "__main__":
-    question = "Who works in the IT department?"
+    question = "DEPARTMENT COLLABORATION"
 
     documents = retrieve_documents(question)
 

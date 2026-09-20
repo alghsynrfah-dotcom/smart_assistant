@@ -7,9 +7,17 @@ type Message = {
   route?: string;
   source?: string;
   liked?: "like" | "dislike";
+  responseTime?: number;
 };
 
 type ChatResponse = {
+  answer: string;
+  route: string;
+  source: string;
+};
+
+type HistoryItem = {
+  question: string;
   answer: string;
   route: string;
   source: string;
@@ -26,6 +34,48 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/history");
+
+        if (!response.ok) {
+          throw new Error("Could not load chat history");
+        }
+
+        const data: { history: HistoryItem[] } = await response.json();
+
+        const historyMessages: Message[] = [];
+
+        data.history.forEach((item) => {
+          historyMessages.push({
+            role: "user",
+            content: item.question,
+          });
+
+          historyMessages.push({
+            role: "assistant",
+            content: item.answer,
+            route: item.route,
+            source: item.source,
+          });
+        });
+
+        setMessages(historyMessages);
+
+        if (data.history.length > 0) {
+          setLastMessage(
+            data.history[data.history.length - 1].question
+          );
+        }
+      } catch (error) {
+        console.error("HISTORY ERROR:", error);
+      }
+    };
+
+    loadHistory();
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
@@ -49,6 +99,8 @@ export default function App() {
     if (!userText || isLoading) {
       return;
     }
+
+    const startTime = performance.now();
 
     setError(null);
     setLastMessage(userText);
@@ -101,7 +153,7 @@ export default function App() {
             role: "assistant",
             content: "",
             route: "rag",
-            source: source || "employees.txt",
+            source: source || "employee documents",
           },
         ]);
 
@@ -140,29 +192,38 @@ export default function App() {
 
         if (finalChunk) {
           assistantAnswer += finalChunk;
-
-          setMessages((currentMessages) => {
-            const updatedMessages = [...currentMessages];
-            const lastIndex = updatedMessages.length - 1;
-
-            if (
-              lastIndex >= 0 &&
-              updatedMessages[lastIndex].role === "assistant"
-            ) {
-              updatedMessages[lastIndex] = {
-                ...updatedMessages[lastIndex],
-                content: assistantAnswer,
-              };
-            }
-
-            return updatedMessages;
-          });
         }
+
+        const responseTime = Number(
+          ((performance.now() - startTime) / 1000).toFixed(2)
+        );
+
+        setMessages((currentMessages) => {
+          const updatedMessages = [...currentMessages];
+          const lastIndex = updatedMessages.length - 1;
+
+          if (
+            lastIndex >= 0 &&
+            updatedMessages[lastIndex].role === "assistant"
+          ) {
+            updatedMessages[lastIndex] = {
+              ...updatedMessages[lastIndex],
+              content: assistantAnswer,
+              responseTime,
+            };
+          }
+
+          return updatedMessages;
+        });
 
         return;
       }
 
       const data: ChatResponse = await response.json();
+
+      const responseTime = Number(
+        ((performance.now() - startTime) / 1000).toFixed(2)
+      );
 
       setMessages((currentMessages) => [
         ...currentMessages,
@@ -171,6 +232,7 @@ export default function App() {
           content: data.answer,
           route: data.route,
           source: data.source,
+          responseTime,
         },
       ]);
     } catch (error) {
@@ -447,6 +509,12 @@ export default function App() {
                           <span>
                             Route: {msg.route}
                           </span>
+
+                          {msg.responseTime !== undefined && (
+                            <span>
+                              Response time: {msg.responseTime}s
+                            </span>
+                          )}
                         </div>
                       )}
                     </>

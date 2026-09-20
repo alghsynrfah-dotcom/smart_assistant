@@ -3,7 +3,11 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg
 from backend.router import route_question
-from backend.rag_service import (generate_rag_answer,generate_rag_answer_stream)
+from backend.rag_service import (
+    generate_rag_answer,
+    generate_rag_answer_stream,
+    get_rag_sources
+)
 from pydantic import BaseModel
 from typing import List
 import os
@@ -57,6 +61,74 @@ def get_db_connection():
     )
 
 
+def init_chat_history_table():
+    conn = get_db_connection()
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id SERIAL PRIMARY KEY,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                route TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def save_chat_history(question, answer, route, source):
+    conn = get_db_connection()
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO chat_history
+            (question, answer, route, source)
+            VALUES (%s, %s, %s, %s);
+            """,
+            (question, answer, route, source)
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def get_chat_history():
+    conn = get_db_connection()
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT question, answer, route, source
+            FROM chat_history
+            ORDER BY id DESC
+            LIMIT 4;
+            """
+        )
+
+        rows = cursor.fetchall()
+
+    conn.close()
+
+    rows.reverse()
+
+    return [
+        {
+            "question": row[0],
+            "answer": row[1],
+            "route": row[2],
+            "source": row[3]
+        }
+        for row in rows
+    ]
+
+
 @app.get("/")
 def root():
     return {
@@ -89,6 +161,13 @@ def test_route(question: str):
     }
 
 
+@app.get("/history")
+def history():
+    return {
+        "history": get_chat_history()
+    }
+
+
 def get_employee_data():
     conn = get_db_connection()
 
@@ -106,15 +185,17 @@ def get_employee_data():
 @app.post("/chat")
 def chat(request: ChatRequest):
 
+    history = [
+        {
+            "role": message.role,
+            "content": message.content
+        }
+        for message in request.conversation_history
+    ]
+
     route = route_question(
         request.question,
-        [
-            {
-                "role": message.role,
-                "content": message.content
-            }
-            for message in request.conversation_history
-        ]
+        history
     )
 
     # =========================
@@ -122,21 +203,40 @@ def chat(request: ChatRequest):
     # =========================
     if route == "rag":
 
-        history = [
-            {
-                "role": message.role,
-                "content": message.content
-            }
-            for message in request.conversation_history
-        ]
+        try:
+            sources = get_rag_sources(
+                request.question,
+                history
+            )
+
+            if sources:
+                source = ", ".join(sources)
+            else:
+                source = "employee documents"
+
+        except Exception as e:
+            print("RAG SOURCE ERROR:", e)
+            source = "employee documents"
 
         def rag_generator():
+            answer_parts = []
+
             try:
                 for text in generate_rag_answer_stream(
                     request.question,
                     history
                 ):
+                    answer_parts.append(text)
                     yield text
+
+                full_answer = "".join(answer_parts)
+
+                save_chat_history(
+                    request.question,
+                    full_answer,
+                    "rag",
+                    source
+                )
 
             except Exception as e:
                 print("RAG STREAM ERROR:", e)
@@ -147,7 +247,7 @@ def chat(request: ChatRequest):
             media_type="text/plain",
             headers={
                 "X-Route": "rag",
-                "X-Source": "employees.txt"
+                "X-Source": source
             }
         )
 
@@ -159,8 +259,17 @@ def chat(request: ChatRequest):
             employees = get_employee_data()
 
             if not employees:
+                answer = "No employee data found."
+
+                save_chat_history(
+                    request.question,
+                    answer,
+                    route,
+                    "PostgreSQL"
+                )
+
                 return {
-                    "answer": "No employee data found.",
+                    "answer": answer,
                     "route": route,
                     "source": "PostgreSQL"
                 }
@@ -169,6 +278,13 @@ def chat(request: ChatRequest):
                 f"ID: {row[0]}, Name: {row[1]}, Department: {row[2]}, "
                 f"Position: {row[3]}, Salary: {row[4]}"
                 for row in employees
+            )
+
+            save_chat_history(
+                request.question,
+                answer,
+                route,
+                "PostgreSQL"
             )
 
             return {
@@ -180,8 +296,10 @@ def chat(request: ChatRequest):
         except Exception as e:
             print("DATABASE ERROR:", e)
 
+            answer = "Could not retrieve employee data from PostgreSQL."
+
             return {
-                "answer": "Could not retrieve employee data from PostgreSQL.",
+                "answer": answer,
                 "route": route,
                 "source": "PostgreSQL"
             }
@@ -202,6 +320,13 @@ def chat(request: ChatRequest):
 
         answer = response.choices[0].message.content
 
+        save_chat_history(
+            request.question,
+            answer,
+            "llm",
+            "Qwen"
+        )
+
         return {
             "answer": answer,
             "route": "llm",
@@ -216,3 +341,6 @@ def chat(request: ChatRequest):
             "route": "llm",
             "source": "Qwen"
         }
+
+
+init_chat_history_table()

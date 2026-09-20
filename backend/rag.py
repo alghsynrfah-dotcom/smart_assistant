@@ -1,39 +1,140 @@
 from pathlib import Path
 
 
-DOCUMENT_PATH = Path(__file__).parent / "data" / "employees.txt"
+DATA_PATH = Path(__file__).parent / "data"
 
 
-def load_document():
-    with open(DOCUMENT_PATH, "r", encoding="utf-8") as file:
-        return file.read()
+def load_documents():
+    documents = []
+
+    files = sorted(
+        file_path
+        for file_path in DATA_PATH.iterdir()
+        if file_path.is_file()
+    )
+
+    for file_path in files:
+        with open(file_path, "r", encoding="utf-8") as file:
+            documents.append({
+                "source": file_path.name,
+                "text": file.read()
+            })
+
+    return documents
 
 
-def chunk_document(text):
-    sections = text.split("EMPLOYEE:")
-
+def chunk_document(documents):
     chunks = []
 
-    for section in sections:
-        section = section.strip()
+    for document in documents:
+        if "DEPARTMENT COLLABORATION" in document:
+            headings = [
+                "EMPLOYEE WORK INFORMATION",
+                "IT EMPLOYEES",
+                "HR EMPLOYEES",
+                "FINANCE EMPLOYEES",
+                "DEPARTMENT COLLABORATION"
+            ]
 
-        if not section:
-            continue
+            current_chunk = ""
 
-        chunks.append(section)
+            for line in document.splitlines():
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                if line in headings:
+                    if current_chunk:
+                        chunks.append(current_chunk.strip())
+
+                    current_chunk = line
+                else:
+                    current_chunk += "\n" + line
+
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+
+        else:
+            sections = document.split("EMPLOYEE:")
+
+            for section in sections:
+                section = section.strip()
+
+                if not section:
+                    continue
+
+                chunks.append(section)
+
+    return chunks
+def chunk_documents_with_sources(documents):
+    chunks = []
+
+    for document in documents:
+        source = document["source"]
+        text = document["text"]
+
+        if "DEPARTMENT COLLABORATION" in text:
+            headings = [
+                "EMPLOYEE WORK INFORMATION",
+                "IT EMPLOYEES",
+                "HR EMPLOYEES",
+                "FINANCE EMPLOYEES",
+                "DEPARTMENT COLLABORATION"
+            ]
+
+            current_chunk = ""
+
+            for line in text.splitlines():
+                line = line.strip()
+
+                if not line:
+                    continue
+
+                if line in headings:
+                    if current_chunk:
+                        chunks.append({
+                            "text": current_chunk.strip(),
+                            "source": source
+                        })
+
+                    current_chunk = line
+                else:
+                    current_chunk += "\n" + line
+
+            if current_chunk:
+                chunks.append({
+                    "text": current_chunk.strip(),
+                    "source": source
+                })
+
+        else:
+            sections = text.split("EMPLOYEE:")
+
+            for section in sections:
+                section = section.strip()
+
+                if not section:
+                    continue
+
+                chunks.append({
+                    "text": section,
+                    "source": source
+                })
 
     return chunks
 
-
 if __name__ == "__main__":
-    document = load_document()
+    documents = load_documents()
 
-    print("DOCUMENT LOADED:")
-    print(document)
+    print("\nDOCUMENT 3 CONTENT:")
+    print(documents[2])
 
-    chunks = chunk_document(document)
+    print("NUMBER OF DOCUMENTS:", len(documents))
 
-    print("\nNUMBER OF CHUNKS:", len(chunks))
+    chunks = chunk_document(documents)
+
+    print("NUMBER OF CHUNKS:", len(chunks))
 
     for index, chunk in enumerate(chunks):
         print(f"\n--- CHUNK {index + 1} ---")
