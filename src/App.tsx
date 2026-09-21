@@ -32,6 +32,7 @@ export default function App() {
   const [lastMessage, setLastMessage] = useState("");
   const [copiedMessage, setCopiedMessage] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [recommendation, setRecommendation] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -81,7 +82,7 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
-  }, [messages, isLoading, error]);
+  }, [messages, isLoading, error, recommendation]);
 
   useEffect(() => {
     document.body.style.backgroundColor = darkMode
@@ -92,6 +93,54 @@ export default function App() {
       document.body.style.backgroundColor = "";
     };
   }, [darkMode]);
+
+  const fetchRecommendation = async (
+    conversation: Message[]
+  ) => {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/recommendation",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            conversation: conversation.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Could not get recommendation");
+      }
+
+      const data: { recommendation: string } =
+        await response.json();
+
+      setRecommendation(data.recommendation);
+    } catch (error) {
+      console.error("RECOMMENDATION ERROR:", error);
+    }
+  };
+
+  const checkRecommendation = async (
+    conversation: Message[]
+  ) => {
+    const userMessageCount = conversation.filter(
+      (msg) => msg.role === "user"
+    ).length;
+
+    if (
+      userMessageCount >= 4 &&
+      userMessageCount % 4 === 0
+    ) {
+      await fetchRecommendation(conversation);
+    }
+  };
 
   const sendMessage = async (text?: string) => {
     const userText = (text ?? message).trim();
@@ -107,28 +156,33 @@ export default function App() {
     setMessage("");
     setIsLoading(true);
 
+    const userMessage: Message = {
+      role: "user",
+      content: userText,
+    };
+
     setMessages((currentMessages) => [
       ...currentMessages,
-      {
-        role: "user",
-        content: userText,
-      },
+      userMessage,
     ]);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          question: userText,
-          conversation_history: messages.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          })),
-        }),
-      });
+      const response = await fetch(
+        "http://127.0.0.1:8000/chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            question: userText,
+            conversation_history: messages.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+          }),
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Backend request failed");
@@ -198,6 +252,14 @@ export default function App() {
           ((performance.now() - startTime) / 1000).toFixed(2)
         );
 
+        const assistantMessage: Message = {
+          role: "assistant",
+          content: assistantAnswer,
+          route: "rag",
+          source: source || "employee documents",
+          responseTime,
+        };
+
         setMessages((currentMessages) => {
           const updatedMessages = [...currentMessages];
           const lastIndex = updatedMessages.length - 1;
@@ -206,15 +268,19 @@ export default function App() {
             lastIndex >= 0 &&
             updatedMessages[lastIndex].role === "assistant"
           ) {
-            updatedMessages[lastIndex] = {
-              ...updatedMessages[lastIndex],
-              content: assistantAnswer,
-              responseTime,
-            };
+            updatedMessages[lastIndex] = assistantMessage;
           }
 
           return updatedMessages;
         });
+
+        const updatedConversation: Message[] = [
+          ...messages,
+          userMessage,
+          assistantMessage,
+        ];
+
+        await checkRecommendation(updatedConversation);
 
         return;
       }
@@ -225,16 +291,26 @@ export default function App() {
         ((performance.now() - startTime) / 1000).toFixed(2)
       );
 
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: data.answer,
+        route: data.route,
+        source: data.source,
+        responseTime,
+      };
+
       setMessages((currentMessages) => [
         ...currentMessages,
-        {
-          role: "assistant",
-          content: data.answer,
-          route: data.route,
-          source: data.source,
-          responseTime,
-        },
+        assistantMessage,
       ]);
+
+      const updatedConversation: Message[] = [
+        ...messages,
+        userMessage,
+        assistantMessage,
+      ];
+
+      await checkRecommendation(updatedConversation);
     } catch (error) {
       console.error("CHAT ERROR:", error);
 
@@ -255,6 +331,7 @@ export default function App() {
     setLastMessage("");
     setCopiedMessage(null);
     setSearchQuery("");
+    setRecommendation("");
   };
 
   const copyMessage = async (
@@ -522,6 +599,13 @@ export default function App() {
                 </div>
               )
             )
+          )}
+
+          {recommendation && (
+            <div className="recommendation-box">
+              <strong>💡 Recommendation</strong>
+              <p>{recommendation}</p>
+            </div>
           )}
 
           {isLoading && (

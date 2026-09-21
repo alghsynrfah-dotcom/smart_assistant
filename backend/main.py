@@ -49,6 +49,9 @@ class ChatRequest(BaseModel):
     conversation_history: List[Message] = []
 
 
+class RecommendationRequest(BaseModel):
+    conversation: List[Message]
+
 class ChatResponse(BaseModel):
     answer: str
     route: str
@@ -165,6 +168,92 @@ def test_route(question: str):
 def history():
     return {
         "history": get_chat_history()
+    }
+
+
+def generate_recommendation(conversation):
+    conversation_text = " ".join(
+        message.content.lower()
+        for message in conversation
+        if message.role == "user"
+    )
+
+    if any(
+        word in conversation_text
+        for word in [
+            "department",
+            "departments",
+            "it department",
+            "hr department",
+            "finance department",
+            "collaboration",
+        ]
+    ):
+        return "You may also want to ask about department responsibilities."
+
+    if any(
+        word in conversation_text
+        for word in [
+            "ahmad",
+            "omar",
+            "sara",
+            "lina",
+            "employee",
+            "employees",
+        ]
+    ):
+        return "You may also want to ask about employee skills and responsibilities."
+
+    if any(
+        word in conversation_text
+        for word in [
+            "salary",
+            "salaries",
+            "راتب",
+            "رواتب",
+        ]
+    ):
+        return "You may also want to ask about employee departments and positions."
+
+    if any(
+        word in conversation_text
+        for word in [
+            "software",
+            "programming",
+            "backend",
+            "developer",
+        ]
+    ):
+        return "You may also want to ask about technical responsibilities."
+
+    if any(
+        word in conversation_text
+        for word in [
+            "recruitment",
+            "hr",
+            "human resources",
+        ]
+    ):
+        return "You may also want to ask about HR responsibilities."
+
+    if any(
+        word in conversation_text
+        for word in [
+            "finance",
+            "accounting",
+        ]
+    ):
+        return "You may also want to ask about Finance responsibilities."
+
+    return "You may also want to ask about another employee or department."
+
+
+@app.post("/recommendation")
+def recommendation(request: RecommendationRequest):
+    return {
+        "recommendation": generate_recommendation(
+            request.conversation
+        )
     }
 
 

@@ -1,4 +1,3 @@
-
 import os
 
 from dotenv import load_dotenv
@@ -18,11 +17,18 @@ client = OpenAI(
 MODEL_NAME = os.getenv("MODEL_NAME")
 
 
-def build_retrieval_question(question, conversation_history):
+def get_recent_history(conversation_history):
     if not conversation_history:
-        return question
+        return []
 
-    recent_history = conversation_history[-4:]
+    return conversation_history[-4:]
+
+
+def build_retrieval_question(question, conversation_history):
+    recent_history = get_recent_history(conversation_history)
+
+    if not recent_history:
+        return question
 
     history_text = "\n".join(
         f"{message['role']}: {message['content']}"
@@ -75,32 +81,32 @@ def generate_rag_answer(question, conversation_history=None):
     if conversation_history is None:
         conversation_history = []
 
-    # 1. Retrieve relevant chunks
     documents = retrieve_rag_documents(
         question,
         conversation_history
     )
 
-    # 2. Combine retrieved chunks into context
     context = "\n\n".join(
         document["text"]
         for document in documents
     )
 
-    # 3. Convert conversation history to text
-    history_text = "\n".join(
-        f"{message['role']}: {message['content']}"
-        for message in conversation_history
+    recent_history = get_recent_history(
+        conversation_history
     )
 
-    # 4. Build prompt
+    history_text = "\n".join(
+        f"{message['role']}: {message['content']}"
+        for message in recent_history
+    )
+
     prompt = f"""
 Use the document context and the conversation history to answer the user's question.
 
 Document Context:
 {context}
 
-Conversation History:
+Recent Conversation Context:
 {history_text}
 
 Current User Question:
@@ -109,7 +115,6 @@ Current User Question:
 If the answer is not available in the document context, say that the information is not available in the document.
 """
 
-    # 5. Send the prompt to the LLM
     response = client.chat.completions.create(
         model=MODEL_NAME,
         messages=[
@@ -120,7 +125,6 @@ If the answer is not available in the document context, say that the information
         ]
     )
 
-    # 6. Return the answer
     return response.choices[0].message.content
 
 
@@ -128,32 +132,32 @@ def generate_rag_answer_stream(question, conversation_history=None):
     if conversation_history is None:
         conversation_history = []
 
-    # 1. Retrieve relevant chunks
     documents = retrieve_rag_documents(
         question,
         conversation_history
     )
 
-    # 2. Combine retrieved chunks into context
     context = "\n\n".join(
         document["text"]
         for document in documents
     )
 
-    # 3. Convert conversation history to text
-    history_text = "\n".join(
-        f"{message['role']}: {message['content']}"
-        for message in conversation_history
+    recent_history = get_recent_history(
+        conversation_history
     )
 
-    # 4. Build prompt
+    history_text = "\n".join(
+        f"{message['role']}: {message['content']}"
+        for message in recent_history
+    )
+
     prompt = f"""
 Use the document context and the conversation history to answer the user's question.
 
 Document Context:
 {context}
 
-Conversation History:
+Recent Conversation Context:
 {history_text}
 
 Current User Question:
@@ -162,7 +166,6 @@ Current User Question:
 If the answer is not available in the document context, say that the information is not available in the document.
 """
 
-    # 5. Send the prompt to the LLM with streaming
     response = client.chat.completions.create(
         model=MODEL_NAME,
         messages=[
@@ -174,7 +177,6 @@ If the answer is not available in the document context, say that the information
         stream=True
     )
 
-    # 6. Return the answer gradually
     for chunk in response:
         if chunk.choices and chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content

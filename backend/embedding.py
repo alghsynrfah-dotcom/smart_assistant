@@ -27,17 +27,17 @@ def create_embedding(text):
 
 
 if __name__ == "__main__":
-    from backend.rag import load_documents, chunk_document
+    from backend.rag import load_documents, chunk_documents_with_sources
 
     documents = load_documents()
-    chunks = chunk_document(documents)
+    chunks = chunk_documents_with_sources(documents)
 
     print("NUMBER OF DOCUMENTS:", len(documents))
     print("NUMBER OF CHUNKS:", len(chunks))
 
     for index, chunk in enumerate(chunks):
-        vector = create_embedding(chunk)
+        vector = create_embedding(chunk["text"])
 
         print(f"\nCHUNK {index + 1}")
-        print("TEXT:", chunk[:100])
+        print("TEXT:", chunk["text"][:100])
         print("VECTOR LENGTH:", len(vector))

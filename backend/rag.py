@@ -23,50 +23,6 @@ def load_documents():
     return documents
 
 
-def chunk_document(documents):
-    chunks = []
-
-    for document in documents:
-        if "DEPARTMENT COLLABORATION" in document:
-            headings = [
-                "EMPLOYEE WORK INFORMATION",
-                "IT EMPLOYEES",
-                "HR EMPLOYEES",
-                "FINANCE EMPLOYEES",
-                "DEPARTMENT COLLABORATION"
-            ]
-
-            current_chunk = ""
-
-            for line in document.splitlines():
-                line = line.strip()
-
-                if not line:
-                    continue
-
-                if line in headings:
-                    if current_chunk:
-                        chunks.append(current_chunk.strip())
-
-                    current_chunk = line
-                else:
-                    current_chunk += "\n" + line
-
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-
-        else:
-            sections = document.split("EMPLOYEE:")
-
-            for section in sections:
-                section = section.strip()
-
-                if not section:
-                    continue
-
-                chunks.append(section)
-
-    return chunks
 def chunk_documents_with_sources(documents):
     chunks = []
 
@@ -99,6 +55,7 @@ def chunk_documents_with_sources(documents):
                         })
 
                     current_chunk = line
+
                 else:
                     current_chunk += "\n" + line
 
@@ -124,18 +81,18 @@ def chunk_documents_with_sources(documents):
 
     return chunks
 
+
 if __name__ == "__main__":
     documents = load_documents()
 
-    print("\nDOCUMENT 3 CONTENT:")
-    print(documents[2])
-
     print("NUMBER OF DOCUMENTS:", len(documents))
 
-    chunks = chunk_document(documents)
+    chunks = chunk_documents_with_sources(documents)
 
     print("NUMBER OF CHUNKS:", len(chunks))
 
     for index, chunk in enumerate(chunks):
         print(f"\n--- CHUNK {index + 1} ---")
-        print(chunk)
+        print("SOURCE:", chunk["source"])
+        print("TEXT:")
+        print(chunk["text"])
