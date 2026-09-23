@@ -1,10 +1,60 @@
-def route_question(question: str, conversation_history=None) -> str:
+
+def route_question(
+    question: str,
+    conversation_history=None,
+    cv_uploaded=False
+) -> str:
+
     question = question.lower().strip()
+
+    # --------------------------------------------------
+    # CV questions
+    # --------------------------------------------------
+    if cv_uploaded:
+
+        cv_question_phrases = [
+            "my education",
+            "my skills",
+            "my experience",
+            "my qualifications",
+            "my job title",
+            "my position",
+            "my cv",
+            "my resume",
+            "my background",
+            "my degree",
+            "my university",
+            "my programming languages",
+        ]
+
+        for phrase in cv_question_phrases:
+
+            if phrase in question:
+                return "cv_extraction"
+
+    # --------------------------------------------------
+    # Explicit CV / Resume questions
+    # --------------------------------------------------
+    cv_keywords = [
+        "cv",
+        "resume",
+        "curriculum vitae",
+        "my cv",
+        "my resume",
+        "upload cv",
+        "uploaded cv",
+    ]
+
+    for keyword in cv_keywords:
+
+        if keyword in question:
+            return "cv_extraction"
 
     # --------------------------------------------------
     # Follow-up questions
     # --------------------------------------------------
     if conversation_history:
+
         history_text = " ".join(
             message["content"].lower()
             for message in conversation_history
@@ -29,7 +79,9 @@ def route_question(question: str, conversation_history=None) -> str:
         ]
 
         for word in follow_up_words:
+
             if word in question.split():
+
                 if any(
                     context_word in history_text
                     for context_word in [
@@ -58,6 +110,7 @@ def route_question(question: str, conversation_history=None) -> str:
     ]
 
     for keyword in db_keywords:
+
         if keyword in question:
             return "db_direct"
 
@@ -65,6 +118,7 @@ def route_question(question: str, conversation_history=None) -> str:
     # RAG questions
     # --------------------------------------------------
     rag_phrases = [
+
         # Employees
         "ahmad",
         "omar",
@@ -135,6 +189,7 @@ def route_question(question: str, conversation_history=None) -> str:
     ]
 
     for phrase in rag_phrases:
+
         if phrase in question:
             return "rag"
 
@@ -150,10 +205,55 @@ def route_question(question: str, conversation_history=None) -> str:
     ]
 
     for keyword in employee_keywords:
+
         if keyword in question:
             return "db_direct"
 
     # --------------------------------------------------
-    # General LLM questions
+    # Calculator questions
+    # --------------------------------------------------
+    calculator_keywords = [
+        "calculate",
+        "calculator",
+        "plus",
+        "minus",
+        "times",
+        "multiplied",
+        "divided",
+        "divide",
+        "sum",
+        "add",
+        "subtract",
+        "multiply",
+        "percentage",
+        "percent",
+    ]
+
+    for keyword in calculator_keywords:
+
+        if keyword in question:
+            return "calculator"
+
+    # --------------------------------------------------
+    # Mathematical expressions
+    # --------------------------------------------------
+    if any(char.isdigit() for char in question):
+
+        math_operators = [
+            "+",
+            "-",
+            "*",
+            "/",
+            "%",
+        ]
+
+        if any(
+            operator in question
+            for operator in math_operators
+        ):
+            return "calculator"
+
+    # --------------------------------------------------
+    # General LLM
     # --------------------------------------------------
     return "llm"
