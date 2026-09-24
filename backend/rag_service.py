@@ -17,15 +17,30 @@ client = OpenAI(
 MODEL_NAME = os.getenv("MODEL_NAME")
 
 
+# ==================================================
+# Conversational History
+# ==================================================
+
 def get_recent_history(conversation_history):
+
     if not conversation_history:
         return []
 
-    return conversation_history[-4:]
+    return conversation_history[-2:]
 
 
-def build_retrieval_question(question, conversation_history):
-    recent_history = get_recent_history(conversation_history)
+# ==================================================
+# Build Retrieval Question
+# ==================================================
+
+def build_retrieval_question(
+    question,
+    conversation_history
+):
+
+    recent_history = get_recent_history(
+        conversation_history
+    )
 
     if not recent_history:
         return question
@@ -35,16 +50,23 @@ def build_retrieval_question(question, conversation_history):
         for message in recent_history
     )
 
-    return f"""
-Previous conversation:
-{history_text}
+    return (
+        "Previous conversation:\n"
+        + history_text
+        + "\nCurrent question:\n"
+        + question
+    )
 
-Current question:
-{question}
-"""
 
+# ==================================================
+# Retrieve RAG Documents
+# ==================================================
 
-def retrieve_rag_documents(question, conversation_history=None):
+def retrieve_rag_documents(
+    question,
+    conversation_history=None
+):
+
     if conversation_history is None:
         conversation_history = []
 
@@ -55,13 +77,21 @@ def retrieve_rag_documents(question, conversation_history=None):
 
     documents = retrieve_documents(
         retrieval_question,
-        top_k=3
+        top_k=2
     )
 
     return documents
 
 
-def get_rag_sources(question, conversation_history=None):
+# ==================================================
+# RAG Sources
+# ==================================================
+
+def get_rag_sources(
+    question,
+    conversation_history=None
+):
+
     documents = retrieve_rag_documents(
         question,
         conversation_history
@@ -77,18 +107,32 @@ def get_rag_sources(question, conversation_history=None):
     return sources
 
 
-def generate_rag_answer(question, conversation_history=None):
-    if conversation_history is None:
-        conversation_history = []
+# ==================================================
+# Build RAG Prompt
+# ==================================================
 
-    documents = retrieve_rag_documents(
-        question,
-        conversation_history
-    )
+def build_rag_prompt(
+    question,
+    conversation_history,
+    documents
+):
+
+    # Keep only a small amount of document context
+    # because the model supports only 512 tokens.
+
+    context_parts = []
+
+    for document in documents:
+
+        text = document["text"]
+
+        # Limit each document chunk.
+        text = text[:1200]
+
+        context_parts.append(text)
 
     context = "\n\n".join(
-        document["text"]
-        for document in documents
+        context_parts
     )
 
     recent_history = get_recent_history(
@@ -101,34 +145,33 @@ def generate_rag_answer(question, conversation_history=None):
     )
 
     prompt = f"""
-Use the document context and the conversation history to answer the user's question.
+Answer the user's question using the employee documents.
 
-Document Context:
+Documents:
 {context}
 
-Recent Conversation Context:
+Previous conversation:
 {history_text}
 
-Current User Question:
+Question:
 {question}
 
-If the answer is not available in the document context, say that the information is not available in the document.
+If the answer is not in the documents, say:
+"The information is not available in the document."
 """
 
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
-
-    return response.choices[0].message.content
+    return prompt
 
 
-def generate_rag_answer_stream(question, conversation_history=None):
+# ==================================================
+# Generate RAG Answer
+# ==================================================
+
+def generate_rag_answer(
+    question,
+    conversation_history=None
+):
+
     if conversation_history is None:
         conversation_history = []
 
@@ -137,34 +180,11 @@ def generate_rag_answer_stream(question, conversation_history=None):
         conversation_history
     )
 
-    context = "\n\n".join(
-        document["text"]
-        for document in documents
+    prompt = build_rag_prompt(
+        question,
+        conversation_history,
+        documents
     )
-
-    recent_history = get_recent_history(
-        conversation_history
-    )
-
-    history_text = "\n".join(
-        f"{message['role']}: {message['content']}"
-        for message in recent_history
-    )
-
-    prompt = f"""
-Use the document context and the conversation history to answer the user's question.
-
-Document Context:
-{context}
-
-Recent Conversation Context:
-{history_text}
-
-Current User Question:
-{question}
-
-If the answer is not available in the document context, say that the information is not available in the document.
-"""
 
     response = client.chat.completions.create(
         model=MODEL_NAME,
@@ -174,20 +194,75 @@ If the answer is not available in the document context, say that the information
                 "content": prompt
             }
         ],
+        max_tokens=150
+    )
+
+    return response.choices[0].message.content
+
+
+# ==================================================
+# Generate Streaming RAG Answer
+# ==================================================
+
+def generate_rag_answer_stream(
+    question,
+    conversation_history=None
+):
+
+    if conversation_history is None:
+        conversation_history = []
+
+    documents = retrieve_rag_documents(
+        question,
+        conversation_history
+    )
+
+    prompt = build_rag_prompt(
+        question,
+        conversation_history,
+        documents
+    )
+
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        max_tokens=150,
         stream=True
     )
 
     for chunk in response:
-        if chunk.choices and chunk.choices[0].delta.content:
+
+        if (
+            chunk.choices
+            and chunk.choices[0].delta.content
+        ):
+
             yield chunk.choices[0].delta.content
 
 
+# ==================================================
+# Test
+# ==================================================
+
 if __name__ == "__main__":
+
     question = "How do departments collaborate?"
 
     print("STREAMING TEST:")
 
-    for text in generate_rag_answer_stream(question):
-        print(text, end="", flush=True)
+    for text in generate_rag_answer_stream(
+        question
+    ):
+
+        print(
+            text,
+            end="",
+            flush=True
+        )
 
     print()

@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +20,8 @@ from typing import List
 
 import os
 from pathlib import Path
+import json
+import re
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -57,8 +58,36 @@ client = OpenAI(
 
 MODEL_NAME = os.getenv("MODEL_NAME")
 
+
+# ==================================================
+# Session Memory
+# ==================================================
+#
+# Conversational History:
+#   stores previous messages.
+#
+# Session Memory:
+#   stores important information extracted from
+#   the conversation.
+#
+# Example:
+#
+# SESSION_MEMORY = {
+#     "default": {
+#         "important_facts": [
+#             "User is interested in front-end development",
+#             "User has Java and C++ experience"
+#         ]
+#     }
+# }
+#
+
 SESSION_MEMORY = {}
 
+
+# ==================================================
+# System Prompt
+# ==================================================
 
 SYSTEM_PROMPT = """
 You are a Smart Assistant.
@@ -190,6 +219,195 @@ def get_chat_history():
 
 
 # ==================================================
+# Session Memory Functions
+# ==================================================
+
+def get_session_memory(session_id):
+    """
+    Return the important information stored for a session.
+    """
+
+    if session_id not in SESSION_MEMORY:
+        SESSION_MEMORY[session_id] = {
+            "important_facts": []
+        }
+
+    return SESSION_MEMORY[session_id]
+
+
+def update_session_memory(
+    session_id,
+    question,
+    answer
+):
+    """
+    Extract important information from the current
+    conversation turn and store it in Session Memory.
+
+    Session Memory is different from Conversational History.
+
+    Conversational History:
+        Previous messages.
+
+    Session Memory:
+        Important facts that may be useful later
+        in the same session.
+
+    This function uses one LLM call only.
+    It is not an agent loop.
+    """
+
+    memory = get_session_memory(session_id)
+
+    current_facts = memory.get(
+        "important_facts",
+        []
+    )
+
+    memory_prompt = f"""
+You maintain Session Memory for a Smart Assistant.
+
+Session Memory is NOT conversational history.
+
+Store only important information that can be useful later
+in the SAME conversation.
+
+Do NOT store:
+- greetings
+- small talk
+- temporary wording
+- unnecessary details
+- the full conversation
+- mathematical calculations unless they are important context
+
+Useful information can include:
+- user's name
+- user's interests
+- user's preferences
+- user's goals
+- facts explicitly stated by the user
+- important context needed for follow-up questions
+- important entities discussed in the conversation
+
+Current Session Memory:
+{json.dumps(current_facts, ensure_ascii=False)}
+
+New user message:
+{question}
+
+Assistant answer:
+{answer}
+
+Return the COMPLETE updated Session Memory.
+
+Keep all useful existing facts and add only NEW important facts.
+
+Do not invent information.
+
+Return ONLY valid JSON in exactly this format:
+
+{{
+    "important_facts": [
+        "fact 1",
+        "fact 2"
+    ]
+}}
+"""
+
+    try:
+
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": memory_prompt
+                }
+            ]
+        )
+
+        content = response.choices[0].message.content
+
+        if not content:
+            return
+
+        content = content.strip()
+
+        # Remove markdown code fences if Qwen adds them.
+        content = re.sub(
+            r"^```json\s*",
+            "",
+            content,
+            flags=re.IGNORECASE
+        )
+
+        content = re.sub(
+            r"^```\s*",
+            "",
+            content
+        )
+
+        content = re.sub(
+            r"\s*```$",
+            "",
+            content
+        )
+
+        # Try to extract JSON object if extra text exists.
+        json_match = re.search(
+            r"\{.*\}",
+            content,
+            re.DOTALL
+        )
+
+        if json_match:
+            content = json_match.group(0)
+
+        data = json.loads(content)
+
+        new_facts = data.get(
+            "important_facts",
+            []
+        )
+
+        if not isinstance(new_facts, list):
+            return
+
+        # --------------------------------------------------
+        # Merge old + new facts
+        # --------------------------------------------------
+
+        merged_facts = []
+
+        for fact in current_facts + new_facts:
+
+            if not isinstance(fact, str):
+                continue
+
+            fact = fact.strip()
+
+            if not fact:
+                continue
+
+            if fact not in merged_facts:
+                merged_facts.append(fact)
+
+        memory["important_facts"] = merged_facts
+
+        print(
+            "SESSION MEMORY UPDATED:",
+            memory["important_facts"]
+        )
+
+    except Exception as e:
+
+        print(
+            "SESSION MEMORY ERROR:",
+            e
+        )
+
+
+# ==================================================
 # Basic endpoints
 # ==================================================
 
@@ -202,10 +420,14 @@ def root():
 
 @app.get("/employees")
 def get_employees():
+
     conn = get_db_connection()
 
     with conn.cursor() as cursor:
-        cursor.execute("SELECT * FROM employees;")
+        cursor.execute(
+            "SELECT * FROM employees;"
+        )
+
         employees = cursor.fetchall()
 
     conn.close()
@@ -217,6 +439,7 @@ def get_employees():
 
 @app.get("/route")
 def test_route(question: str):
+
     route = route_question(question)
 
     return {
@@ -227,8 +450,42 @@ def test_route(question: str):
 
 @app.get("/history")
 def history():
+
     return {
         "history": get_chat_history()
+    }
+
+
+# ==================================================
+# Session Memory endpoint
+# ==================================================
+
+@app.get("/session-memory/{session_id}")
+def session_memory_endpoint(session_id: str):
+
+    memory = get_session_memory(session_id)
+
+    return {
+        "session_id": session_id,
+        "memory": memory
+    }
+
+
+# ==================================================
+# Clear Session Memory
+# ==================================================
+
+@app.delete("/session-memory/{session_id}")
+def clear_session_memory(session_id: str):
+
+    SESSION_MEMORY.pop(
+        session_id,
+        None
+    )
+
+    return {
+        "message": "Session memory cleared.",
+        "session_id": session_id
     }
 
 
@@ -237,9 +494,12 @@ def history():
 # ==================================================
 
 @app.post("/cv/upload")
-async def upload_cv(file: UploadFile = File(...)):
+async def upload_cv(
+    file: UploadFile = File(...)
+):
 
     if file.content_type != "application/pdf":
+
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are allowed."
@@ -252,10 +512,17 @@ async def upload_cv(file: UploadFile = File(...)):
     )
 
     try:
+
         file_content = await file.read()
 
-        with open(cv_path, "wb") as output_file:
-            output_file.write(file_content)
+        with open(
+            cv_path,
+            "wb"
+        ) as output_file:
+
+            output_file.write(
+                file_content
+            )
 
         return {
             "message": "CV uploaded successfully.",
@@ -263,7 +530,11 @@ async def upload_cv(file: UploadFile = File(...)):
         }
 
     except Exception as e:
-        print("CV UPLOAD ERROR:", e)
+
+        print(
+            "CV UPLOAD ERROR:",
+            e
+        )
 
         raise HTTPException(
             status_code=500,
@@ -283,63 +554,87 @@ def generate_recommendation(conversation):
         if message.role == "user"
     )
 
-    if any(word in conversation_text for word in [
-        "department",
-        "departments",
-        "it department",
-        "hr department",
-        "finance department",
-        "collaboration",
-    ]):
+    if any(
+        word in conversation_text
+        for word in [
+            "department",
+            "departments",
+            "it department",
+            "hr department",
+            "finance department",
+            "collaboration",
+        ]
+    ):
+
         return (
             "You may also want to ask about department responsibilities."
         )
 
-    if any(word in conversation_text for word in [
-        "ahmad",
-        "omar",
-        "sara",
-        "lina",
-        "employee",
-        "employees",
-    ]):
+    if any(
+        word in conversation_text
+        for word in [
+            "ahmad",
+            "omar",
+            "sara",
+            "lina",
+            "employee",
+            "employees",
+        ]
+    ):
+
         return (
             "You may also want to ask about employee skills and responsibilities."
         )
 
-    if any(word in conversation_text for word in [
-        "salary",
-        "salaries",
-        "راتب",
-        "رواتب",
-    ]):
+    if any(
+        word in conversation_text
+        for word in [
+            "salary",
+            "salaries",
+            "راتب",
+            "رواتب",
+        ]
+    ):
+
         return (
             "You may also want to ask about employee departments and positions."
         )
 
-    if any(word in conversation_text for word in [
-        "software",
-        "programming",
-        "backend",
-        "developer",
-    ]):
+    if any(
+        word in conversation_text
+        for word in [
+            "software",
+            "programming",
+            "backend",
+            "developer",
+        ]
+    ):
+
         return (
             "You may also want to ask about technical responsibilities."
         )
 
-    if any(word in conversation_text for word in [
-        "recruitment",
-        "hr",
-        "human resources",
-    ]):
+    if any(
+        word in conversation_text
+        for word in [
+            "recruitment",
+            "hr",
+            "human resources",
+        ]
+    ):
+
         return (
             "You may also want to ask about HR responsibilities."
         )
 
-    if any(word in conversation_text for word in [
-        "finance",
-        "accounting",
-    ]):
+    if any(
+        word in conversation_text
+        for word in [
+            "finance",
+            "accounting",
+        ]
+    ):
+
         return (
             "You may also want to ask about Finance responsibilities."
         )
@@ -350,7 +645,9 @@ def generate_recommendation(conversation):
 
 
 @app.post("/recommendation")
-def recommendation(request: RecommendationRequest):
+def recommendation(
+    request: RecommendationRequest
+):
 
     return {
         "recommendation": generate_recommendation(
@@ -363,13 +660,16 @@ def recommendation(request: RecommendationRequest):
 # Employee database
 # ==================================================
 
-def get_employee_data(employee_name=None):
+def get_employee_data(
+    employee_name=None
+):
 
     conn = get_db_connection()
 
     with conn.cursor() as cursor:
 
         if employee_name:
+
             cursor.execute(
                 """
                 SELECT id, name, department, position, salary
@@ -378,7 +678,9 @@ def get_employee_data(employee_name=None):
                 """,
                 (employee_name,)
             )
+
         else:
+
             cursor.execute(
                 """
                 SELECT id, name, department, position, salary
@@ -400,6 +702,10 @@ def get_employee_data(employee_name=None):
 @app.post("/chat")
 def chat(request: ChatRequest):
 
+    # ==================================================
+    # Conversational History
+    # ==================================================
+
     history = [
         {
             "role": message.role,
@@ -412,10 +718,9 @@ def chat(request: ChatRequest):
     # Session Memory
     # ==================================================
 
-    if request.session_id not in SESSION_MEMORY:
-        SESSION_MEMORY[request.session_id] = []
-
-    session_memory = SESSION_MEMORY[request.session_id]
+    session_memory = get_session_memory(
+        request.session_id
+    )
 
     # ==================================================
     # Check uploaded CV
@@ -446,12 +751,19 @@ def chat(request: ChatRequest):
     if route == "calculator":
 
         try:
-            answer = calculate(request.question)
+
+            answer = calculate(
+                request.question
+            )
 
             if answer is None:
-                answer = "Could not calculate the expression."
+
+                answer = (
+                    "Could not calculate the expression."
+                )
 
             else:
+
                 answer = str(answer)
 
             save_chat_history(
@@ -461,15 +773,11 @@ def chat(request: ChatRequest):
                 "calculator"
             )
 
-            session_memory.append({
-                "role": "user",
-                "content": request.question
-            })
-
-            session_memory.append({
-                "role": "assistant",
-                "content": answer
-            })
+            update_session_memory(
+                request.session_id,
+                request.question,
+                answer
+            )
 
             return {
                 "answer": answer,
@@ -479,19 +787,20 @@ def chat(request: ChatRequest):
 
         except Exception as e:
 
-            print("CALCULATOR ERROR:", e)
+            print(
+                "CALCULATOR ERROR:",
+                e
+            )
 
-            answer = "Could not calculate the expression."
+            answer = (
+                "Could not calculate the expression."
+            )
 
-            session_memory.append({
-                "role": "user",
-                "content": request.question
-            })
-
-            session_memory.append({
-                "role": "assistant",
-                "content": answer
-            })
+            update_session_memory(
+                request.session_id,
+                request.question,
+                answer
+            )
 
             return {
                 "answer": answer,
@@ -513,11 +822,15 @@ def chat(request: ChatRequest):
 
         try:
 
-            cv_text = extract_cv_text(cv_path)
+            cv_text = extract_cv_text(
+                cv_path
+            )
 
             if not cv_text:
 
-                answer = "Could not extract text from the CV."
+                answer = (
+                    "Could not extract text from the CV."
+                )
 
                 save_chat_history(
                     request.question,
@@ -526,15 +839,11 @@ def chat(request: ChatRequest):
                     "CV"
                 )
 
-                session_memory.append({
-                    "role": "user",
-                    "content": request.question
-                })
-
-                session_memory.append({
-                    "role": "assistant",
-                    "content": answer
-                })
+                update_session_memory(
+                    request.session_id,
+                    request.question,
+                    answer
+                )
 
                 return {
                     "answer": answer,
@@ -565,7 +874,9 @@ def chat(request: ChatRequest):
                 ]
             )
 
-            answer = response.choices[0].message.content
+            answer = (
+                response.choices[0].message.content
+            )
 
             save_chat_history(
                 request.question,
@@ -574,15 +885,11 @@ def chat(request: ChatRequest):
                 "CV"
             )
 
-            session_memory.append({
-                "role": "user",
-                "content": request.question
-            })
-
-            session_memory.append({
-                "role": "assistant",
-                "content": answer
-            })
+            update_session_memory(
+                request.session_id,
+                request.question,
+                answer
+            )
 
             return {
                 "answer": answer,
@@ -592,19 +899,20 @@ def chat(request: ChatRequest):
 
         except Exception as e:
 
-            print("CV EXTRACTION ERROR:", e)
+            print(
+                "CV EXTRACTION ERROR:",
+                e
+            )
 
-            answer = "Could not process the CV."
+            answer = (
+                "Could not process the CV."
+            )
 
-            session_memory.append({
-                "role": "user",
-                "content": request.question
-            })
-
-            session_memory.append({
-                "role": "assistant",
-                "content": answer
-            })
+            update_session_memory(
+                request.session_id,
+                request.question,
+                answer
+            )
 
             return {
                 "answer": answer,
@@ -618,10 +926,13 @@ def chat(request: ChatRequest):
 
     if route == "rag":
 
+        # Keep Conversational History separate
+        # from Session Memory.
+
         rag_history = (
-            session_memory[-6:]
-            if session_memory
-            else history
+            history[-6:]
+            if history
+            else []
         )
 
         try:
@@ -632,15 +943,27 @@ def chat(request: ChatRequest):
             )
 
             if sources:
-                source = ", ".join(sources)
+
+                source = ", ".join(
+                    sources
+                )
+
             else:
-                source = "employee documents"
+
+                source = (
+                    "employee documents"
+                )
 
         except Exception as e:
 
-            print("RAG SOURCE ERROR:", e)
+            print(
+                "RAG SOURCE ERROR:",
+                e
+            )
 
-            source = "employee documents"
+            source = (
+                "employee documents"
+            )
 
         def rag_generator():
 
@@ -653,11 +976,15 @@ def chat(request: ChatRequest):
                     rag_history
                 ):
 
-                    answer_parts.append(text)
+                    answer_parts.append(
+                        text
+                    )
 
                     yield text
 
-                full_answer = "".join(answer_parts)
+                full_answer = "".join(
+                    answer_parts
+                )
 
                 save_chat_history(
                     request.question,
@@ -666,33 +993,31 @@ def chat(request: ChatRequest):
                     source
                 )
 
-                session_memory.append({
-                    "role": "user",
-                    "content": request.question
-                })
+                # Extract important information
+                # only after the complete answer exists.
 
-                session_memory.append({
-                    "role": "assistant",
-                    "content": full_answer
-                })
+                update_session_memory(
+                    request.session_id,
+                    request.question,
+                    full_answer
+                )
 
             except Exception as e:
 
-                print("RAG STREAM ERROR:", e)
+                print(
+                    "RAG STREAM ERROR:",
+                    e
+                )
 
                 error_answer = (
                     "\n\nThe RAG service is currently unavailable."
                 )
 
-                session_memory.append({
-                    "role": "user",
-                    "content": request.question
-                })
-
-                session_memory.append({
-                    "role": "assistant",
-                    "content": error_answer
-                })
+                update_session_memory(
+                    request.session_id,
+                    request.question,
+                    error_answer
+                )
 
                 yield error_answer
 
@@ -713,27 +1038,37 @@ def chat(request: ChatRequest):
 
         try:
 
-            question_lower = request.question.lower()
+            question_lower = (
+                request.question.lower()
+            )
 
             employee_name = None
 
             if "ahmad" in question_lower:
+
                 employee_name = "Ahmad"
 
             elif "sara" in question_lower:
+
                 employee_name = "Sara"
 
             elif "omar" in question_lower:
+
                 employee_name = "Omar"
 
             elif "lina" in question_lower:
+
                 employee_name = "Lina"
 
-            employees = get_employee_data(employee_name)
+            employees = get_employee_data(
+                employee_name
+            )
 
             if not employees:
 
-                answer = "No employee data found."
+                answer = (
+                    "No employee data found."
+                )
 
                 save_chat_history(
                     request.question,
@@ -742,15 +1077,11 @@ def chat(request: ChatRequest):
                     "PostgreSQL"
                 )
 
-                session_memory.append({
-                    "role": "user",
-                    "content": request.question
-                })
-
-                session_memory.append({
-                    "role": "assistant",
-                    "content": answer
-                })
+                update_session_memory(
+                    request.session_id,
+                    request.question,
+                    answer
+                )
 
                 return {
                     "answer": answer,
@@ -772,15 +1103,11 @@ def chat(request: ChatRequest):
                 "PostgreSQL"
             )
 
-            session_memory.append({
-                "role": "user",
-                "content": request.question
-            })
-
-            session_memory.append({
-                "role": "assistant",
-                "content": answer
-            })
+            update_session_memory(
+                request.session_id,
+                request.question,
+                answer
+            )
 
             return {
                 "answer": answer,
@@ -790,21 +1117,20 @@ def chat(request: ChatRequest):
 
         except Exception as e:
 
-            print("DATABASE ERROR:", e)
+            print(
+                "DATABASE ERROR:",
+                e
+            )
 
             answer = (
                 "Could not retrieve employee data from PostgreSQL."
             )
 
-            session_memory.append({
-                "role": "user",
-                "content": request.question
-            })
-
-            session_memory.append({
-                "role": "assistant",
-                "content": answer
-            })
+            update_session_memory(
+                request.session_id,
+                request.question,
+                answer
+            )
 
             return {
                 "answer": answer,
@@ -818,7 +1144,20 @@ def chat(request: ChatRequest):
 
     try:
 
-        memory_messages = session_memory[-6:]
+        # --------------------------------------------------
+        # Conversational History
+        # --------------------------------------------------
+
+        history_messages = history[-6:]
+
+        # --------------------------------------------------
+        # Session Memory
+        # --------------------------------------------------
+
+        important_facts = session_memory.get(
+            "important_facts",
+            []
+        )
 
         messages = [
             {
@@ -827,8 +1166,27 @@ def chat(request: ChatRequest):
             }
         ]
 
-        messages.extend(memory_messages)
+        # Add Session Memory
+        if important_facts:
 
+            messages.append({
+                "role": "system",
+                "content": (
+                    "Important information remembered "
+                    "from this session:\n"
+                    + "\n".join(
+                        f"- {fact}"
+                        for fact in important_facts
+                    )
+                )
+            })
+
+        # Add Conversational History
+        messages.extend(
+            history_messages
+        )
+
+        # Add current question
         messages.append({
             "role": "user",
             "content": request.question
@@ -839,7 +1197,9 @@ def chat(request: ChatRequest):
             messages=messages
         )
 
-        answer = response.choices[0].message.content
+        answer = (
+            response.choices[0].message.content
+        )
 
         save_chat_history(
             request.question,
@@ -848,15 +1208,12 @@ def chat(request: ChatRequest):
             "Qwen"
         )
 
-        session_memory.append({
-            "role": "user",
-            "content": request.question
-        })
-
-        session_memory.append({
-            "role": "assistant",
-            "content": answer
-        })
+        # Update Session Memory
+        update_session_memory(
+            request.session_id,
+            request.question,
+            answer
+        )
 
         return {
             "answer": answer,
@@ -866,22 +1223,21 @@ def chat(request: ChatRequest):
 
     except Exception as e:
 
-        print("LLM ERROR:", e)
+        print(
+            "LLM ERROR:",
+            e
+        )
 
         answer = (
             "The LLM service is currently unavailable. "
             "Please try again later."
         )
 
-        session_memory.append({
-            "role": "user",
-            "content": request.question
-        })
-
-        session_memory.append({
-            "role": "assistant",
-            "content": answer
-        })
+        update_session_memory(
+            request.session_id,
+            request.question,
+            answer
+        )
 
         return {
             "answer": answer,
